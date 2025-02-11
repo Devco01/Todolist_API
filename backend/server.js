@@ -2,21 +2,15 @@ const express = require('express');
 const todoRoutes = require('./src/routes/todoRoutes');
 const app = express();
 
-// Middlewares
+// Basic middleware
 app.use(express.json());
 
-// Simple root route
-app.get('/', (req, res) => {
-  res.send('API is running');
-});
+// Health check - le plus simple possible
+app.get('/test', (req, res) => res.sendStatus(200));
 
-// API routes
+// Routes
+app.get('/', (req, res) => res.send('API is running'));
 app.use('/api/todos', todoRoutes);
-
-// Handle 404
-app.use((req, res) => {
-  res.status(404).send('Not found');
-});
 
 // Export for Vercel
 module.exports = app; 
