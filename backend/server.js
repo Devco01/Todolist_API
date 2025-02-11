@@ -35,94 +35,31 @@ app.use(express.urlencoded({ extended: true }));
 // Connexion MongoDB avec plus de logs
 mongoose.set('debug', true); // Active les logs MongoDB
 
-// Healthcheck endpoint simplifié
-app.get('/test', (req, res) => {
-  res.status(200).json({ status: 'ok' });
-});
-
-// Améliorer la gestion de la connexion MongoDB
-const connectDB = async () => {
-  try {
-    console.log('Tentative de connexion à MongoDB...');
-    await mongoose.connect(process.env.MONGODB_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 10000, // Augmenter le timeout
-      heartbeatFrequencyMS: 2000,      // Vérifier plus fréquemment
-      retryWrites: true,
-      w: 'majority'
-    });
-    console.log('MongoDB connecté avec succès');
-  } catch (err) {
-    console.error('Erreur de connexion MongoDB:', err);
-    // Ne pas quitter le processus, permettre les retries
-    setTimeout(connectDB, 5000);
-  }
-};
-
-// Démarrage du serveur après connexion MongoDB
-const startServer = () => {
-  const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => {
-    console.log(`Serveur démarré sur le port ${PORT}`);
-  });
-};
-
-// Connexion MongoDB puis démarrage serveur
-connectDB().then(() => {
-  startServer();
-}).catch(err => {
-  console.error('Erreur fatale:', err);
-  process.exit(1);
-});
-
-// Ajout de plus de listeners d'événements
-mongoose.connection.on('connecting', () => {
-  console.log('Tentative de connexion à MongoDB...');
-});
-
-mongoose.connection.on('connected', () => {
-  console.log('Mongoose connecté à MongoDB');
-});
-
-mongoose.connection.on('error', err => {
-  console.error('Erreur de connexion Mongoose:', err);
-});
-
-mongoose.connection.on('disconnected', () => {
-  console.log('Mongoose déconnecté de MongoDB');
-});
-
-// Route racine
+// Route racine en premier
 app.get('/', (req, res) => {
   res.json({
     status: 'TodoList API is running',
     endpoints: {
       todos: '/api/todos',
       health: '/test'
-    },
-    documentation: 'https://github.com/Devco01/todolist-api'
+    }
   });
 });
 
-// Routes API
+// Puis les routes API
 app.use('/api/todos', todoRoutes);
 
-// Healthcheck endpoint
+// Puis le healthcheck
 app.get('/test', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 
-// Gestion des 404
+// Gestion des 404 en dernier
 app.use((req, res) => {
   res.status(404).json({ 
     error: 'Not Found',
     message: 'The requested endpoint does not exist',
-    availableEndpoints: [
-      '/api/todos',
-      '/test',
-      '/'
-    ]
+    availableEndpoints: ['/api/todos', '/test', '/']
   });
 });
 
