@@ -16,7 +16,8 @@
     "vuex": "^4.1.0",
     "axios": "^1.5.0",
     "vue-router": "^4.2.4",
-    "path": "^0.12.7"
+    "path": "^0.12.7",
+    "mongoose": "^7.0.0"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^4.3.4",
