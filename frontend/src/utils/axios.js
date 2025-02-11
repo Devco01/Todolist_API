@@ -6,10 +6,7 @@ const baseURL = import.meta.env.PROD
 
 const instance = axios.create({
   baseURL,
-  withCredentials: false,
-  headers: {
-    'Content-Type': 'application/json'
-  }
+  timeout: 10000
 });
 
 // Intercepteur pour les erreurs
