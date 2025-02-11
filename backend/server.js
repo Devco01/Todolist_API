@@ -92,6 +92,16 @@ mongoose.connection.on('disconnected', () => {
 // Routes
 app.use('/api/todos', todoRoutes);
 
+// Route par défaut pour le healthcheck
+app.get('/', (req, res) => {
+  res.json({ status: 'API is running' });
+});
+
+// Gestion des 404
+app.use((req, res) => {
+  res.status(404).json({ message: 'Route not found' });
+});
+
 // Gestion globale des erreurs
 app.use((err, req, res, next) => {
   console.error('Erreur globale:', err);
