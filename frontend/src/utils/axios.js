@@ -6,12 +6,26 @@ const baseURL = import.meta.env.PROD
 
 const instance = axios.create({
   baseURL,
-  withCredentials: true,
+  withCredentials: false,  // Désactivé pour éviter les problèmes de cookies
   headers: {
     'Content-Type': 'application/json',
-    'Accept': 'application/json',
-    'X-Requested-With': 'XMLHttpRequest'
-  }
+    'Accept': 'application/json'
+  },
+  // Ajouter un timeout
+  timeout: 10000
 });
+
+// Intercepteur pour les erreurs
+instance.interceptors.response.use(
+  response => response,
+  error => {
+    console.error('Erreur API:', {
+      message: error.message,
+      status: error.response?.status,
+      data: error.response?.data
+    });
+    return Promise.reject(error);
+  }
+);
 
 export default instance; 

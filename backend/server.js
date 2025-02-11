@@ -10,33 +10,23 @@ const todoRoutes = require('./src/routes/todoRoutes');
 
 const app = express();
 
-// Configuration CORS
-const corsOptions = {
-  origin: '*',
-  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-  preflightContinue: false,
-  optionsSuccessStatus: 204,
-  credentials: true,
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
-};
-
-app.use(cors(corsOptions));
-
-// Middleware pour les headers supplémentaires
+// Middleware CORS avant tout
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,PATCH,OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-  res.header('Access-Control-Allow-Credentials', true);
-  
-  // Gérer les requêtes OPTIONS
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.setHeader('Access-Control-Max-Age', '86400');
+
+  // Gérer les requêtes OPTIONS préliminaires
   if (req.method === 'OPTIONS') {
-    return res.status(204).end();
+    return res.status(200).end();
   }
   next();
 });
 
+// Puis les autres middlewares
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // Connexion MongoDB avec plus de logs
 mongoose.set('debug', true); // Active les logs MongoDB
