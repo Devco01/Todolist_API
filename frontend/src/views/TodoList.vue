@@ -49,6 +49,14 @@
       <button type="submit">Ajouter</button>
     </form>
 
+    <div v-if="loading" class="loading">
+      Chargement...
+    </div>
+    <div v-else-if="error" class="error">
+      {{ error }}
+      <button @click="retryLoading">Réessayer</button>
+    </div>
+
     <!-- Liste des tâches -->
     <div class="todos">
       <div 
@@ -150,13 +158,9 @@ export default {
 
     const addTodo = async () => {
       try {
-        const formattedTodo = {
-          ...newTodo.value,
-          dueTime: `${newTodo.value.hours}:${newTodo.value.minutes}`
-        };
-        
-        const success = await store.dispatch('createTodo', formattedTodo);
-        if (success) {
+        const result = await store.dispatch('createTodo', newTodo.value);
+        if (result.success) {
+          // Réinitialiser le formulaire
           const currentTime = getCurrentTime();
           newTodo.value = {
             title: '',
@@ -166,10 +170,9 @@ export default {
             minutes: currentTime.minutes
           };
         } else {
-          alert('Erreur de connexion au serveur. Vos modifications sont sauvegardées localement et seront synchronisées automatiquement.');
+          alert(result.message || 'Erreur lors de la création de la tâche');
         }
       } catch (error) {
-        console.error('Erreur détaillée lors de l\'ajout:', error);
         alert('Une erreur est survenue. Veuillez réessayer.');
       }
     }
@@ -179,14 +182,15 @@ export default {
     }
 
     const deleteTodo = async (todoId) => {
-      try {
-        const success = await store.dispatch('deleteTodo', todoId);
-        if (!success) {
-          alert('Erreur lors de la suppression. Veuillez réessayer.');
+      if (confirm('Êtes-vous sûr de vouloir supprimer cette tâche ?')) {
+        try {
+          const result = await store.dispatch('deleteTodo', todoId);
+          if (!result.success) {
+            alert(result.message || 'Erreur lors de la suppression de la tâche');
+          }
+        } catch (error) {
+          alert('Une erreur est survenue lors de la suppression.');
         }
-      } catch (error) {
-        console.error('Erreur lors de la suppression:', error);
-        alert('Une erreur est survenue lors de la suppression.');
       }
     }
 
@@ -217,7 +221,10 @@ export default {
       deleteTodo,
       toggleTodo,
       formatDateTime,
-      getCategoryIcon
+      getCategoryIcon,
+      loading: computed(() => store.getters.loading),
+      error: computed(() => store.getters.error),
+      retryLoading: () => store.dispatch('fetchTodos')
     }
   }
 }
@@ -525,5 +532,21 @@ input[type="date"], input[type="time"] {
   color: #4169e1;
   font-weight: bold;
   font-size: 1.2em;
+}
+
+.loading, .error {
+  text-align: center;
+  padding: 20px;
+  margin: 20px 0;
+  border-radius: 8px;
+}
+
+.loading {
+  background: #f0f0f0;
+}
+
+.error {
+  background: #ffe6e6;
+  color: #d00;
 }
 </style> 
