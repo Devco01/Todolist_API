@@ -71,33 +71,26 @@ export default createStore({
       try {
         const { data } = await axiosInstance.post('/todos', todo);
         commit('ADD_TODO', data);
-        return true;
+        return { success: true };
       } catch (error) {
-        console.error('Erreur détaillée:', error.response?.data || error);
-        // Sauvegarder localement uniquement si c'est une erreur réseau
-        if (!error.response || error.response.status >= 500) {
-          const newTodo = { ...todo, _id: Date.now().toString() };
-          commit('ADD_TODO', newTodo);
-        }
-        return false;
+        console.error('Erreur lors de la création:', error);
+        return { 
+          success: false, 
+          message: 'Impossible de créer la tâche. Veuillez réessayer.' 
+        };
       }
     },
     async deleteTodo({ commit }, todoId) {
       try {
-        const response = await axiosInstance.delete(`/todos/${todoId}`);
-        if (response.status === 200) {
-          commit('DELETE_TODO', todoId);
-          return true;
-        }
-        return false;
+        await axiosInstance.delete(`/todos/${todoId}`);
+        commit('DELETE_TODO', todoId);
+        return { success: true };
       } catch (error) {
-        console.error('Erreur détaillée:', error.response?.data || error);
-        if (error.response?.status === 404) {
-          // Si la todo n'existe plus sur le serveur, on la supprime localement
-          commit('DELETE_TODO', todoId);
-          return true;
-        }
-        return false;
+        console.error('Erreur lors de la suppression:', error);
+        return { 
+          success: false, 
+          message: 'Impossible de supprimer la tâche. Veuillez réessayer.' 
+        };
       }
     },
     async updateTodo({ commit }, todo) {
