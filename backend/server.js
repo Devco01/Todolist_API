@@ -1,6 +1,10 @@
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
+
+// Ajout de cette ligne pour supprimer l'avertissement
+mongoose.set('strictQuery', false);
+
 const cors = require('cors');
 const todoRoutes = require('./src/routes/todoRoutes');
 
@@ -10,8 +14,9 @@ const app = express();
 const corsOptions = {
   origin: [
     'http://localhost:5173',
-    'https://todolist-vue.vercel.app',  // Votre domaine Vercel
-    'https://todolist-vue-git-main-your-username.vercel.app'
+    'https://todolistapi-production-0e04.up.railway.app',
+    'https://votre-app.vercel.app',  // Le domaine fourni par Vercel
+    'https://votre-app-git-main-username.vercel.app'  // Le domaine de preview
   ],
   credentials: false,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
