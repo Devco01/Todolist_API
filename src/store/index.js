@@ -9,7 +9,9 @@ const loadTodosFromStorage = () => {
 
 export default createStore({
   state: {
-    todos: []
+    todos: [],
+    loading: false,
+    error: null
   },
   getters: {
     // Nouveau getter pour trier les todos
@@ -30,12 +32,17 @@ export default createStore({
     }
   },
   mutations: {
+    SET_LOADING(state, value) {
+      state.loading = value;
+    },
+    SET_ERROR(state, error) {
+      state.error = error;
+    },
     SET_TODOS(state, todos) {
-      console.log('Mutation SET_TODOS:', todos);
-      state.todos = todos;
+      state.todos = Array.isArray(todos) ? todos : [];
     },
     ADD_TODO(state, todo) {
-      console.log('Mutation ADD_TODO:', todo);
+      if (!Array.isArray(state.todos)) state.todos = [];
       state.todos.unshift(todo);
     },
     UPDATE_TODO(state, todo) {
@@ -50,43 +57,54 @@ export default createStore({
   },
   actions: {
     async fetchTodos({ commit }) {
+      commit('SET_LOADING', true);
+      commit('SET_ERROR', null);
       try {
         console.log('Action fetchTodos');
         const { data } = await axios.get('/todos');
         commit('SET_TODOS', data);
       } catch (error) {
+        commit('SET_ERROR', 'Erreur lors du chargement des todos');
         console.error('fetchTodos error:', error);
+      } finally {
+        commit('SET_LOADING', false);
       }
     },
     async createTodo({ commit }, todo) {
+      commit('SET_ERROR', null);
       try {
         console.log('Action createTodo:', todo);
         const { data } = await axios.post('/todos', todo);
         commit('ADD_TODO', data);
         return { success: true };
       } catch (error) {
+        commit('SET_ERROR', 'Erreur lors de la création');
         console.error('createTodo error:', error);
         return { success: false, error };
       }
     },
     async updateTodo({ commit }, todo) {
+      commit('SET_ERROR', null);
       try {
         console.log('Action updateTodo:', todo);
         const { data } = await axios.put(`/todos/${todo._id}`, todo);
         commit('UPDATE_TODO', data);
         return { success: true };
       } catch (error) {
+        commit('SET_ERROR', 'Erreur lors de la mise à jour');
         console.error('updateTodo error:', error);
         return { success: false, error };
       }
     },
     async deleteTodo({ commit }, id) {
+      commit('SET_ERROR', null);
       try {
         console.log('Action deleteTodo:', id);
         await axios.delete(`/todos/${id}`);
         commit('DELETE_TODO', id);
         return { success: true };
       } catch (error) {
+        commit('SET_ERROR', 'Erreur lors de la suppression');
         console.error('deleteTodo error:', error);
         return { success: false, error };
       }
