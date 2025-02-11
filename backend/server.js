@@ -7,13 +7,18 @@ const todoRoutes = require('./src/routes/todoRoutes');
 const app = express();
 
 // Middleware
-app.use(cors({
-  origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
+const corsOptions = {
+  origin: [
+    'http://localhost:5173',
+    'https://todolist-vue.vercel.app',  // Votre domaine Vercel
+    'https://todolist-vue-git-main-your-username.vercel.app'
+  ],
   credentials: false,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  optionsSuccessStatus: 200
-}));
+  allowedHeaders: ['Content-Type', 'Authorization']
+};
+
+app.use(cors(corsOptions));
 
 app.use(express.json());
 
