@@ -16,6 +16,10 @@
         {
           "key": "Set-Cookie",
           "value": ""
+        },
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
         }
       ]
     }
