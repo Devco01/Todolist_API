@@ -35,10 +35,10 @@ Une application de gestion de tâches moderne construite avec la stack MEVN (Mon
 
 ### Production
 - Frontend: https://todolist-vue.vercel.app
-- API: https://todolist-api-seven.vercel.app
+- API: https://todolist-api-seven.vercel.app/api
 
 ### Développement
 - Frontend: http://localhost:5173
-- API: http://localhost:3000
+- API: http://localhost:3000/api
 
 Copyright @ 2025 Devco01
