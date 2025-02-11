@@ -44,6 +44,8 @@ export default createStore({
       state.todos = Array.isArray(todos) ? todos : [];
     },
     ADD_TODO(state, todo) {
+      if (!todo) return;
+      
       if (!Array.isArray(state.todos)) state.todos = [];
       state.todos.unshift(todo);
     },
@@ -75,10 +77,13 @@ export default createStore({
     async createTodo({ commit }, todo) {
       commit('SET_ERROR', null);
       try {
-        console.log('Action createTodo:', todo);
         const { data } = await axios.post('/todos', todo);
-        commit('ADD_TODO', data);
-        return { success: true };
+        if (data && data._id) {
+          commit('ADD_TODO', data);
+          return { success: true };
+        } else {
+          throw new Error('Invalid response from server');
+        }
       } catch (error) {
         commit('SET_ERROR', 'Erreur lors de la création');
         console.error('createTodo error:', error);
