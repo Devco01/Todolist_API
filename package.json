@@ -2,8 +2,8 @@
   "name": "todolist",
   "version": "1.0.0",
   "scripts": {
-    "start": "cd backend && npm start",
-    "install": "cd backend && npm install",
-    "build": "cd backend && npm install"
+    "start": "cd backend && npm start --omit=dev",
+    "install": "cd backend && npm install --omit=dev",
+    "build": "cd backend && npm install --omit=dev"
   }
 } 

@@ -52,9 +52,13 @@
     <!-- Liste des tâches -->
     <div class="todos">
       <div 
-        v-for="todo in todos" 
+        v-for="todo in sortedTodos" 
         :key="todo._id"
-        :class="['todo-item', todo.priority]"
+        :class="[
+          'todo-item',
+          todo.priority,
+          { 'urgent': isUrgent(todo) && !todo.completed }
+        ]"
       >
         <input 
           type="checkbox" 
@@ -65,6 +69,9 @@
           <h3>
             <span class="category-icon" v-html="getCategoryIcon(todo.category)"></span>
             {{ todo.title }}
+            <span v-if="isUrgent(todo) && !todo.completed" class="urgent-badge">
+              Urgent
+            </span>
           </h3>
           <p v-if="todo.description">{{ todo.description }}</p>
           <div class="todo-meta">
@@ -201,7 +208,8 @@ export default {
     })
 
     return {
-      todos: computed(() => store.state.todos),
+      sortedTodos: computed(() => store.getters.sortedTodos),
+      isUrgent: computed(() => store.getters.isUrgent),
       newTodo,
       addTodo,
       deleteTodo,
@@ -298,6 +306,17 @@ button[type="submit"]:hover {
   border-left: 4px solid #4169e1;
 }
 
+.todo-item.urgent {
+  border-left: 4px solid #ff4444;
+  background: linear-gradient(
+    to right,
+    rgba(255, 68, 68, 0.02) 0%,
+    rgba(255, 255, 255, 1) 50%,
+    rgba(255, 68, 68, 0.02) 100%
+  );
+  box-shadow: 0 3px 8px rgba(255, 68, 68, 0.2);
+}
+
 .todo-content {
   flex: 1;
   margin: 0 15px;
@@ -365,6 +384,17 @@ input[type="checkbox"] {
   vertical-align: middle;
   margin-right: 8px;
   color: #4169e1;
+}
+
+.urgent-badge {
+  background-color: #ff4444;
+  color: white;
+  font-size: 0.8em;
+  padding: 3px 10px;
+  border-radius: 12px;
+  margin-left: 10px;
+  font-weight: bold;
+  box-shadow: 0 2px 4px rgba(255, 68, 68, 0.2);
 }
 
 .datetime-inputs {

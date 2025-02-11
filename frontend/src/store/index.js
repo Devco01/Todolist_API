@@ -14,6 +14,24 @@ export default createStore({
   state: {
     todos: loadTodosFromStorage()
   },
+  getters: {
+    // Nouveau getter pour trier les todos
+    sortedTodos: (state) => {
+      return [...state.todos].sort((a, b) => {
+        // Convertir date et heure en timestamp pour comparaison
+        const dateA = new Date(`${a.dueDate}T${a.dueTime || '00:00'}`).getTime();
+        const dateB = new Date(`${b.dueDate}T${b.dueTime || '00:00'}`).getTime();
+        return dateA - dateB; // Tri croissant (plus proche au plus lointain)
+      });
+    },
+    // Nouveau getter pour calculer l'urgence
+    isUrgent: () => (todo) => {
+      const now = new Date().getTime();
+      const dueDate = new Date(`${todo.dueDate}T${todo.dueTime || '00:00'}`).getTime();
+      const hoursLeft = (dueDate - now) / (1000 * 60 * 60);
+      return hoursLeft <= 24 && hoursLeft > 0;
+    }
+  },
   mutations: {
     SET_TODOS(state, todos) {
       state.todos = todos
