@@ -8,5 +8,16 @@
   ],
   "rewrites": [
     { "source": "/(.*)", "destination": "/server.js" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Set-Cookie",
+          "value": ""
+        }
+      ]
+    }
   ]
 } 

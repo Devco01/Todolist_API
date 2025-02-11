@@ -6,7 +6,7 @@ const baseURL = import.meta.env.PROD
 
 const instance = axios.create({
   baseURL,
-  withCredentials: false,  // Désactiver les cookies
+  withCredentials: false,
   headers: {
     'Content-Type': 'application/json'
   }
@@ -32,19 +32,11 @@ instance.interceptors.response.use(
 // Intercepteur pour les requêtes
 instance.interceptors.request.use(
   config => {
-    // Ajouter les headers nécessaires
     config.headers = {
       ...config.headers,
-      'Access-Control-Allow-Origin': '*',
       'Content-Type': 'application/json'
     };
-    if (config.headers) {
-      delete config.headers.Cookie;
-    }
     return config;
-  },
-  error => {
-    return Promise.reject(error);
   }
 );
 
