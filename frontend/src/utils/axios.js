@@ -6,10 +6,11 @@ const baseURL = import.meta.env.PROD
 
 const instance = axios.create({
   baseURL,
-  withCredentials: false,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
-    'Accept': 'application/json'
+    'Accept': 'application/json',
+    'X-Requested-With': 'XMLHttpRequest'
   }
 });
 
