@@ -5,17 +5,18 @@ const app = express();
 // Middlewares
 app.use(express.json());
 
-// Test route for healthcheck
-app.get('/test', (req, res) => {
-  res.status(200).send('ok');  // Réponse la plus simple possible
+// Simple root route
+app.get('/', (req, res) => {
+  res.send('API is running');
 });
 
 // API routes
-app.get('/', (req, res) => {
-  res.json({ status: 'API is running' });
-});
-
 app.use('/api/todos', todoRoutes);
+
+// Handle 404
+app.use((req, res) => {
+  res.status(404).send('Not found');
+});
 
 // Export for Vercel
 module.exports = app; 
