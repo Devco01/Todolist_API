@@ -93,17 +93,37 @@ mongoose.connection.on('disconnected', () => {
   console.log('Mongoose déconnecté de MongoDB');
 });
 
-// Routes
+// Route racine
+app.get('/', (req, res) => {
+  res.json({
+    status: 'TodoList API is running',
+    endpoints: {
+      todos: '/api/todos',
+      health: '/test'
+    },
+    documentation: 'https://github.com/Devco01/todolist-api'
+  });
+});
+
+// Routes API
 app.use('/api/todos', todoRoutes);
 
-// Route par défaut pour le healthcheck
-app.get('/', (req, res) => {
-  res.json({ status: 'API is running' });
+// Healthcheck endpoint
+app.get('/test', (req, res) => {
+  res.status(200).json({ status: 'ok' });
 });
 
 // Gestion des 404
 app.use((req, res) => {
-  res.status(404).json({ message: 'Route not found' });
+  res.status(404).json({ 
+    error: 'Not Found',
+    message: 'The requested endpoint does not exist',
+    availableEndpoints: [
+      '/api/todos',
+      '/test',
+      '/'
+    ]
+  });
 });
 
 // Gestion globale des erreurs
