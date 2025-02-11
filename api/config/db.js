@@ -7,10 +7,24 @@ const connectDB = async () => {
       throw new Error('MONGODB_URI is not defined');
     }
 
-    console.log('MongoDB URI:', process.env.MONGODB_URI.replace(/:[^:]*@/, ':***@'));
-    console.log('Connecting to MongoDB...');
+    // Vérifier le format de l'URI
+    if (!process.env.MONGODB_URI.startsWith('mongodb+srv://')) {
+      console.error('Invalid MongoDB URI format');
+      throw new Error('Invalid MongoDB URI format');
+    }
 
-    const conn = await mongoose.connect(process.env.MONGODB_URI, {
+    // Ajouter le nom de la base de données si manquant
+    let uri = process.env.MONGODB_URI;
+    if (!uri.includes('?')) {
+      uri = `${uri}/todolist?retryWrites=true&w=majority`;
+    } else if (!uri.includes('/todolist')) {
+      uri = uri.replace('/?', '/todolist?');
+    }
+
+    console.log('Connecting to MongoDB...');
+    console.log('URI format valid:', uri.replace(/:[^:]*@/, ':***@'));
+
+    const conn = await mongoose.connect(uri, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
       serverSelectionTimeoutMS: 5000,  // 5 secondes max pour la sélection du serveur
