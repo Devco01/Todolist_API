@@ -78,4 +78,7 @@ Thumbs.db
 
 # Local files that should not be committed
 TODO.md
-NOTES.md 
+NOTES.md
+
+# Data files
+api/store/todos.json 
