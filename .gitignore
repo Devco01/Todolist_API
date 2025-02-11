@@ -1,0 +1,61 @@
+# Dependencies
+node_modules/
+/frontend/node_modules/
+/backend/node_modules/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+/backend/.env
+
+# Build files
+/frontend/dist/
+/frontend/build/
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+/backend/logs/
+*.log
+
+# Editor directories and files
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Vue.js specific
+/frontend/.vite/
+/frontend/coverage/
+
+# MongoDB
+/backend/data/
+*.dump
+
+# Testing
+/coverage/
+/frontend/coverage/
+/backend/coverage/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Local files that should not be committed
+TODO.md
+NOTES.md 
