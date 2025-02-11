@@ -179,12 +179,13 @@ export default {
 
     const deleteTodo = async (todoId) => {
       try {
-        const success = await store.dispatch('deleteTodo', todoId)
+        const success = await store.dispatch('deleteTodo', todoId);
         if (!success) {
-          alert('La suppression n\'a pas pu être synchronisée avec le serveur')
+          console.error('Échec de la suppression');
+          return; // Ne pas continuer si l'API échoue
         }
       } catch (error) {
-        console.error('Erreur lors de la suppression:', error)
+        console.error('Erreur lors de la suppression:', error);
       }
     }
 
