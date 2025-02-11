@@ -34,22 +34,49 @@ app.use(express.urlencoded({ extended: true }));
 // Connexion MongoDB avec plus de logs
 mongoose.set('debug', true); // Active les logs MongoDB
 
+// Healthcheck endpoint
+app.get('/test', (req, res) => {
+  try {
+    // Vérifier la connexion MongoDB
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({ 
+        status: 'error',
+        message: 'Database not connected',
+        readyState: mongoose.connection.readyState
+      });
+    }
+    
+    res.status(200).json({ 
+      status: 'ok',
+      message: 'API fonctionnelle',
+      dbStatus: 'connected'
+    });
+  } catch (error) {
+    console.error('Healthcheck error:', error);
+    res.status(500).json({ 
+      status: 'error',
+      message: error.message 
+    });
+  }
+});
+
+// Améliorer la gestion de la connexion MongoDB
 const connectDB = async () => {
   try {
     console.log('Tentative de connexion à MongoDB...');
     await mongoose.connect(process.env.MONGODB_URI, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 5000 // Timeout après 5 secondes
+      serverSelectionTimeoutMS: 10000, // Augmenter le timeout
+      heartbeatFrequencyMS: 2000,      // Vérifier plus fréquemment
+      retryWrites: true,
+      w: 'majority'
     });
     console.log('MongoDB connecté avec succès');
   } catch (err) {
-    console.error('Erreur détaillée de connexion MongoDB:', {
-      message: err.message,
-      code: err.code,
-      name: err.name
-    });
-    process.exit(1);
+    console.error('Erreur de connexion MongoDB:', err);
+    // Ne pas quitter le processus, permettre les retries
+    setTimeout(connectDB, 5000);
   }
 };
 
@@ -73,10 +100,6 @@ mongoose.connection.on('disconnected', () => {
 });
 
 // Routes
-app.get('/test', (req, res) => {
-  res.json({ message: 'API fonctionnelle' });
-});
-
 app.use('/api/todos', todoRoutes);
 
 // Gestion globale des erreurs
