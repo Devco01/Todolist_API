@@ -31,4 +31,14 @@ Une application de gestion de tâches moderne construite avec la stack MEVN (Mon
 - MongoDB avec Mongoose
 - CORS
 
+## URLs de l'application
+
+### Production
+- Frontend: https://todolist-vue.vercel.app
+- API: https://todolist-api-seven.vercel.app
+
+### Développement
+- Frontend: http://localhost:5173
+- API: http://localhost:3000
+
 Copyright @ 2025 Devco01

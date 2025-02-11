@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const baseURL = import.meta.env.PROD 
-  ? import.meta.env.VITE_API_URL
+  ? 'https://todolist-api-seven.vercel.app/api'  // URL de production correcte
   : 'http://localhost:3000/api';
 
 const instance = axios.create({

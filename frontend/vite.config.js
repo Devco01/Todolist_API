@@ -3,10 +3,13 @@ import vue from '@vitejs/plugin-vue'
 
 export default defineConfig({
   plugins: [vue()],
+  base: '/',
   server: {
     port: 5173
   },
   build: {
+    outDir: 'dist',
+    assetsDir: 'assets',
     // Désactive le SSR
     ssr: false
   }
