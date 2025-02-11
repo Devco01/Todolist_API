@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const baseURL = import.meta.env.PROD 
-  ? 'https://todolist-api-seven.vercel.app/api'  // URL de l'API
+  ? 'https://todolist-17q1wd367-devco01s-projects.vercel.app'  // URL correcte de l'API
   : 'http://localhost:3000/api';
 
 const instance = axios.create({
@@ -19,11 +19,15 @@ const instance = axios.create({
 instance.interceptors.response.use(
   response => response,
   error => {
-    console.error('Erreur API:', {
-      message: error.message,
-      status: error.response?.status,
-      data: error.response?.data
-    });
+    if (error.response?.status === 404) {
+      console.error('Resource not found:', error.config.url);
+    } else {
+      console.error('API Error:', {
+        status: error.response?.status,
+        message: error.message,
+        url: error.config?.url
+      });
+    }
     return Promise.reject(error);
   }
 );
