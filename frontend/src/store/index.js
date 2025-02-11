@@ -2,8 +2,6 @@ import { createStore } from 'vuex'
 import axios from 'axios'
 import axiosInstance from '../utils/axios'
 
-const API_URL = 'http://localhost:3000/api'
-
 // Fonction pour charger les todos du localStorage
 const loadTodosFromStorage = () => {
   const savedTodos = localStorage.getItem('todos')
