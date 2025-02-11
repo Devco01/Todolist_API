@@ -34,30 +34,9 @@ app.use(express.urlencoded({ extended: true }));
 // Connexion MongoDB avec plus de logs
 mongoose.set('debug', true); // Active les logs MongoDB
 
-// Healthcheck endpoint
+// Healthcheck endpoint simplifié
 app.get('/test', (req, res) => {
-  try {
-    // Vérifier la connexion MongoDB
-    if (mongoose.connection.readyState !== 1) {
-      return res.status(503).json({ 
-        status: 'error',
-        message: 'Database not connected',
-        readyState: mongoose.connection.readyState
-      });
-    }
-    
-    res.status(200).json({ 
-      status: 'ok',
-      message: 'API fonctionnelle',
-      dbStatus: 'connected'
-    });
-  } catch (error) {
-    console.error('Healthcheck error:', error);
-    res.status(500).json({ 
-      status: 'error',
-      message: error.message 
-    });
-  }
+  res.status(200).json({ status: 'ok' });
 });
 
 // Améliorer la gestion de la connexion MongoDB
@@ -80,7 +59,21 @@ const connectDB = async () => {
   }
 };
 
-connectDB();
+// Démarrage du serveur après connexion MongoDB
+const startServer = () => {
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => {
+    console.log(`Serveur démarré sur le port ${PORT}`);
+  });
+};
+
+// Connexion MongoDB puis démarrage serveur
+connectDB().then(() => {
+  startServer();
+}).catch(err => {
+  console.error('Erreur fatale:', err);
+  process.exit(1);
+});
 
 // Ajout de plus de listeners d'événements
 mongoose.connection.on('connecting', () => {
@@ -117,14 +110,6 @@ const handler = (req, res) => {
 };
 
 module.exports = allowCors(handler);
-
-// Garder l'écoute du port uniquement en développement
-if (process.env.NODE_ENV !== 'production') {
-  const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => {
-    console.log(`Serveur démarré sur le port ${PORT}`);
-  });
-}
 
 process.on('unhandledRejection', (err) => {
   console.error('Erreur non gérée:', err);
