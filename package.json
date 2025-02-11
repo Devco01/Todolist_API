@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "npm run vercel-build",
     "serve": "node api/server.js",
     "dev:all": "concurrently \"npm run dev\" \"npm run dev:api\"",
     "dev:api": "nodemon api/server.js",
