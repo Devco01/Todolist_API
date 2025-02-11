@@ -100,6 +100,9 @@
 <script>
 import { ref, onMounted, computed } from 'vue'
 import { useStore } from 'vuex'
+import TodoForm from '../components/TodoForm.vue'
+import TodoItem from '../components/TodoItem.vue'
+import { mapGetters } from 'vuex'
 
 // Icônes SVG
 const icons = {
@@ -444,38 +447,6 @@ input[type="date"], input[type="time"] {
   }
 }
 
-/* Images de fond */
-.todo-list::before,
-.todo-list::after {
-  content: '';
-  position: fixed;
-  top: 0;
-  bottom: 0;
-  width: calc((100vw - 900px) / 2);
-  height: 100vh;
-  background-size: cover;
-  background-repeat: no-repeat;
-  background-position: center;
-  z-index: -1;
-  opacity: 0.95;
-}
-
-.todo-list::before {
-  left: 0;
-  background-image: url('/images/Fond_écran_1.jpg');
-  box-shadow: inset -10px 0 30px rgba(0, 0, 51, 0.8);
-  mask-image: linear-gradient(to right, rgba(0,0,0,1) 80%, rgba(0,0,0,0));
-  -webkit-mask-image: linear-gradient(to right, rgba(0,0,0,1) 80%, rgba(0,0,0,0));
-}
-
-.todo-list::after {
-  right: 0;
-  background-image: url('/images/Fond-écran_2.jpg');
-  box-shadow: inset 10px 0 30px rgba(0, 0, 51, 0.8);
-  mask-image: linear-gradient(to left, rgba(0,0,0,1) 80%, rgba(0,0,0,0));
-  -webkit-mask-image: linear-gradient(to left, rgba(0,0,0,1) 80%, rgba(0,0,0,0));
-}
-
 /* Conteneur des todos */
 .todos {
   margin-top: 20px;
@@ -486,12 +457,6 @@ input[type="date"], input[type="time"] {
 
 /* Ajustements responsifs */
 @media (max-width: 1400px) {
-  .todo-list::before,
-  .todo-list::after {
-    width: 300px; /* Augmenté la largeur */
-    background-size: cover;
-  }
-  
   .todo-list {
     margin: 0 auto;
     max-width: 700px;
@@ -499,11 +464,6 @@ input[type="date"], input[type="time"] {
 }
 
 @media (max-width: 1200px) {
-  .todo-list::before,
-  .todo-list::after {
-    display: none;
-  }
-  
   .todo-list {
     margin: 0 20px;
     border-radius: 15px;

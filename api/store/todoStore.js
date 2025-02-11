@@ -13,7 +13,7 @@ const todoStore = {
   
   delete: (id) => {
     todos = todos.filter(todo => todo._id !== id);
-    return true;
+    return { success: true };
   },
   
   update: (id, updates) => {
