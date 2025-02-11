@@ -69,25 +69,34 @@ export default createStore({
     },
     async createTodo({ commit }, todo) {
       try {
-        console.log('Envoi de la todo:', todo)
-        const { data } = await axiosInstance.post('/todos', todo)
-        commit('ADD_TODO', data)
-        return true
+        const { data } = await axiosInstance.post('/todos', todo);
+        commit('ADD_TODO', data);
+        return true;
       } catch (error) {
-        console.error('Erreur détaillée:', error.response?.data || error)
-        const newTodo = { ...todo, _id: Date.now().toString() }
-        commit('ADD_TODO', newTodo)
-        return false
+        console.error('Erreur détaillée:', error.response?.data || error);
+        // Sauvegarder localement uniquement si c'est une erreur réseau
+        if (!error.response || error.response.status >= 500) {
+          const newTodo = { ...todo, _id: Date.now().toString() };
+          commit('ADD_TODO', newTodo);
+        }
+        return false;
       }
     },
     async deleteTodo({ commit }, todoId) {
       try {
-        await axiosInstance.delete(`/todos/${todoId}`);
-        commit('DELETE_TODO', todoId);
-        return true;
+        const response = await axiosInstance.delete(`/todos/${todoId}`);
+        if (response.status === 200) {
+          commit('DELETE_TODO', todoId);
+          return true;
+        }
+        return false;
       } catch (error) {
         console.error('Erreur détaillée:', error.response?.data || error);
-        // Ne pas commit si l'appel API échoue
+        if (error.response?.status === 404) {
+          // Si la todo n'existe plus sur le serveur, on la supprime localement
+          commit('DELETE_TODO', todoId);
+          return true;
+        }
         return false;
       }
     },

@@ -56,14 +56,18 @@ exports.updateTodo = async (req, res) => {
 
 exports.deleteTodo = async (req, res) => {
   try {
-    const todo = await Todo.findById(req.params.id);
-    if (todo) {
-      await todo.deleteOne();
-      res.json({ message: 'Tâche supprimée' });
-    } else {
-      res.status(404).json({ message: 'Tâche non trouvée' });
+    console.log('Tentative de suppression de la todo:', req.params.id);
+    const todo = await Todo.findByIdAndDelete(req.params.id);
+    
+    if (!todo) {
+      console.log('Todo non trouvée');
+      return res.status(404).json({ message: 'Todo non trouvée' });
     }
+    
+    console.log('Todo supprimée avec succès');
+    res.status(200).json({ message: 'Todo supprimée avec succès', id: req.params.id });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Erreur lors de la suppression:', error);
+    res.status(500).json({ message: 'Erreur lors de la suppression de la todo' });
   }
 }; 

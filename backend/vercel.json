@@ -8,13 +8,28 @@
   ],
   "routes": [
     {
+      "src": "/api/todos",
+      "methods": ["GET", "POST", "OPTIONS"],
+      "dest": "server.js"
+    },
+    {
       "src": "/api/todos/(.*)",
-      "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+      "methods": ["GET", "PUT", "DELETE", "OPTIONS"],
       "dest": "server.js"
     },
     {
       "src": "/(.*)",
       "dest": "server.js"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, PUT, DELETE, OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization" }
+      ]
     }
   ]
 } 
