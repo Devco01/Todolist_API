@@ -12,7 +12,7 @@ const loadTodosFromStorage = () => {
 
 export default createStore({
   state: {
-    todos: loadTodosFromStorage()
+    todos: []
   },
   getters: {
     // Nouveau getter pour trier les todos
@@ -34,9 +34,8 @@ export default createStore({
   },
   mutations: {
     SET_TODOS(state, todos) {
-      state.todos = todos
-      // Sauvegarde locale en cas de perte de connexion
-      localStorage.setItem('todos', JSON.stringify(todos))
+      state.todos = Array.isArray(todos) ? todos : [];
+      localStorage.setItem('todos', JSON.stringify(state.todos));
     },
     ADD_TODO(state, todo) {
       state.todos.unshift(todo)
@@ -50,8 +49,11 @@ export default createStore({
       }
     },
     DELETE_TODO(state, todoId) {
-      state.todos = state.todos.filter(t => t._id !== todoId)
-      localStorage.setItem('todos', JSON.stringify(state.todos))
+      if (!Array.isArray(state.todos)) {
+        state.todos = [];
+      }
+      state.todos = state.todos.filter(t => t._id !== todoId);
+      localStorage.setItem('todos', JSON.stringify(state.todos));
     }
   },
   actions: {
@@ -80,13 +82,13 @@ export default createStore({
     },
     async deleteTodo({ commit }, todoId) {
       try {
-        await axiosInstance.delete(`/todos/${todoId}`)
-        commit('DELETE_TODO', todoId)
-        return true
+        await axiosInstance.delete(`/todos/${todoId}`);
+        commit('DELETE_TODO', todoId);
+        return true;
       } catch (error) {
-        console.error('Erreur détaillée:', error.response?.data || error)
-        commit('DELETE_TODO', todoId)
-        return false
+        console.error('Erreur détaillée:', error.response?.data || error);
+        // Ne pas commit si l'appel API échoue
+        return false;
       }
     },
     async updateTodo({ commit }, todo) {
