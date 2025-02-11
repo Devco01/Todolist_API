@@ -1,18 +1,14 @@
 import axios from 'axios';
 
 const baseURL = import.meta.env.PROD 
-  ? 'https://todolist-api-seven.vercel.app/api'  // URL stable de production
+  ? 'https://todolist-api-seven.vercel.app/api'
   : 'http://localhost:3000/api';
 
 const instance = axios.create({
   baseURL,
-  withCredentials: false,  // Désactivé pour éviter les problèmes de cookies
   headers: {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json'
-  },
-  // Ajouter un timeout
-  timeout: 10000
+    'Content-Type': 'application/json'
+  }
 });
 
 // Intercepteur pour les erreurs
@@ -41,6 +37,9 @@ instance.interceptors.request.use(
       'Access-Control-Allow-Origin': '*',
       'Content-Type': 'application/json'
     };
+    if (config.headers) {
+      delete config.headers.Cookie;
+    }
     return config;
   },
   error => {
