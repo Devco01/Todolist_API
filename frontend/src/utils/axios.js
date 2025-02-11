@@ -6,6 +6,7 @@ const baseURL = import.meta.env.PROD
 
 const instance = axios.create({
   baseURL,
+  withCredentials: false,  // Désactiver les cookies
   headers: {
     'Content-Type': 'application/json'
   }
