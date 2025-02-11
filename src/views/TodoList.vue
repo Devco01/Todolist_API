@@ -9,6 +9,7 @@
     
     <!-- Formulaire d'ajout -->
     <form @submit.prevent="addTodo" class="add-todo-form">
+      <div v-if="error" class="error-message">{{ error }}</div>
       <input 
         v-model="newTodo.title" 
         placeholder="Nouvelle tâche..."
@@ -25,13 +26,13 @@
         <div class="time-group">
           <label>Heure :</label>
           <div class="time-selects">
-            <select v-model="newTodo.hours" class="time-select">
+            <select v-model="hours" class="time-select">
               <option v-for="hour in 24" :key="hour-1" :value="String(hour-1).padStart(2, '0')">
                 {{ String(hour-1).padStart(2, '0') }}
               </option>
             </select>
             <span class="time-separator">:</span>
-            <select v-model="newTodo.minutes" class="time-select">
+            <select v-model="minutes" class="time-select">
               <option v-for="minute in 12" :key="(minute-1)*5" :value="String((minute-1)*5).padStart(2, '0')">
                 {{ String((minute-1)*5).padStart(2, '0') }}
               </option>
@@ -127,56 +128,40 @@ export default {
   name: 'TodoList',
   setup() {
     const store = useStore()
-
-    // Fonctions utilitaires
-    const getTodayDate = () => {
-      const today = new Date()
-      return today.toISOString().split('T')[0]
-    }
-
-    const getCurrentTime = () => {
-      const now = new Date();
-      return {
-        hours: String(now.getHours()).padStart(2, '0'),
-        minutes: String(Math.floor(now.getMinutes() / 5) * 5).padStart(2, '0')
-      };
-    }
-
-    // État local
+    const error = computed(() => store.state.error)
+    
+    const hours = ref('12')
+    const minutes = ref('00')
+    
     const newTodo = ref({
       title: '',
+      dueDate: new Date().toISOString().split('T')[0],
+      dueTime: '12:00',
       category: 'autre',
-      dueDate: getTodayDate(),
-      hours: getCurrentTime().hours,
-      minutes: getCurrentTime().minutes
+      completed: false
     })
 
-    // Méthodes
-    const formatDateTime = (date, time) => {
-      if (!date) return ''
-      const dateObj = new Date(date)
-      const formattedDate = dateObj.toLocaleDateString('fr-FR')
-      return time ? `${formattedDate} à ${time}` : formattedDate
-    }
-
     const addTodo = async () => {
-      try {
-        const result = await store.dispatch('createTodo', newTodo.value);
-        if (result.success) {
-          // Réinitialiser le formulaire
-          const currentTime = getCurrentTime();
-          newTodo.value = {
-            title: '',
-            category: 'autre',
-            dueDate: getTodayDate(),
-            hours: currentTime.hours,
-            minutes: currentTime.minutes
-          };
-        } else {
-          alert(result.message || 'Erreur lors de la création de la tâche');
+      if (!newTodo.value.title.trim()) {
+        return;
+      }
+
+      // Combine hours and minutes into dueTime
+      newTodo.value.dueTime = `${hours.value}:${minutes.value}`
+
+      const result = await store.dispatch('createTodo', { ...newTodo.value })
+      
+      if (result.success) {
+        // Reset form only if successful
+        newTodo.value = {
+          title: '',
+          dueDate: new Date().toISOString().split('T')[0],
+          dueTime: '12:00',
+          category: 'autre',
+          completed: false
         }
-      } catch (error) {
-        alert('Une erreur est survenue. Veuillez réessayer.');
+        hours.value = '12'
+        minutes.value = '00'
       }
     }
 
@@ -219,14 +204,21 @@ export default {
     return {
       sortedTodos: computed(() => store.getters.sortedTodos),
       isUrgent: computed(() => store.getters.isUrgent),
+      hours,
+      minutes,
       newTodo,
+      error,
       addTodo,
       deleteTodo,
       toggleTodo,
-      formatDateTime,
+      formatDateTime: (date, time) => {
+        if (!date) return ''
+        const dateObj = new Date(date)
+        const formattedDate = dateObj.toLocaleDateString('fr-FR')
+        return time ? `${formattedDate} à ${time}` : formattedDate
+      },
       getCategoryIcon,
       loading: computed(() => store.getters.loading),
-      error: computed(() => store.getters.error),
       retryLoading: () => store.dispatch('fetchTodos')
     }
   }
@@ -540,5 +532,13 @@ input[type="date"], input[type="time"] {
   box-shadow: inset 10px 0 30px rgba(0, 0, 51, 0.8);
   mask-image: linear-gradient(to left, rgba(0,0,0,1) 80%, rgba(0,0,0,0));
   -webkit-mask-image: linear-gradient(to left, rgba(0,0,0,1) 80%, rgba(0,0,0,0));
+}
+
+.error-message {
+  color: #ff4444;
+  margin-bottom: 10px;
+  padding: 8px;
+  background: #ffe6e6;
+  border-radius: 4px;
 }
 </style> 
