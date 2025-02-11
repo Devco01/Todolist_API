@@ -15,8 +15,9 @@ const corsOptions = {
   origin: [
     'http://localhost:5173',
     'https://todolistapi-production-0e04.up.railway.app',
-    'https://votre-app.vercel.app',  // Le domaine fourni par Vercel
-    'https://votre-app-git-main-username.vercel.app'  // Le domaine de preview
+    'https://todolist-api-seven.vercel.app',
+    'https://todolist-api-seven-git-main.vercel.app',
+    'https://todolist-api-seven-*.vercel.app'  // Pour les branches de preview
   ],
   credentials: false,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
