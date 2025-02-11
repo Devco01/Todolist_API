@@ -1,6 +1,7 @@
 # Dependency directories
 node_modules/
 dist/
+dist-ssr
 
 # Environment files
 .env
@@ -62,10 +63,6 @@ Thumbs.db
 /frontend/.vite/
 /frontend/coverage/
 
-# MongoDB
-/backend/data/
-*.dump
-
 # Testing
 /coverage/
 /frontend/coverage/
@@ -81,4 +78,5 @@ TODO.md
 NOTES.md
 
 # Data files
-api/store/todos.json 
+api/store/todos.json
+.env*.local

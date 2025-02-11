@@ -5,13 +5,17 @@ const todoSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  dueDate: String,
+  dueTime: String,
+  category: {
+    type: String,
+    enum: ['maison', 'courses', 'santé', 'famille', 'autre'],
+    default: 'autre'
+  },
   completed: {
     type: Boolean,
     default: false
   },
-  dueDate: String,
-  dueTime: String,
-  category: String,
   createdAt: {
     type: Date,
     default: Date.now
