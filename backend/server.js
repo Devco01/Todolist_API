@@ -17,6 +17,12 @@ app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS,PATCH');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With');
 
+  // Désactiver complètement les cookies
+  res.setHeader('Set-Cookie', [
+    '__vercel_live_token=; Path=/; SameSite=None; Secure; HttpOnly; Max-Age=0',
+    'cookie=; Path=/; SameSite=None; Secure; HttpOnly; Max-Age=0'
+  ]);
+
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
