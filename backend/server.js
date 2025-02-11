@@ -15,14 +15,42 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Connexion MongoDB
+mongoose.connect(process.env.MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+  serverSelectionTimeoutMS: 5000
+}).then(() => {
+  console.log('MongoDB connecté');
+}).catch(err => {
+  console.error('Erreur MongoDB:', err);
+});
+
 // Routes
 app.get('/', (req, res) => {
   res.json({ message: 'API is running' });
 });
 
+app.get('/test', (req, res) => {
+  res.json({ status: 'ok' });
+});
+
 app.use('/api/todos', todoRoutes);
 
-// Export pour Vercel
+// Gestion des erreurs
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(500).json({ error: 'Erreur serveur' });
+});
+
+// Démarrage du serveur
+const PORT = process.env.PORT || 3000;
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(PORT, () => {
+    console.log(`Serveur démarré sur le port ${PORT}`);
+  });
+}
+
 module.exports = app;
 
 process.on('unhandledRejection', (err) => {
