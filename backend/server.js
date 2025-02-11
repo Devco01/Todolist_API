@@ -1,16 +1,15 @@
 const express = require('express');
-const todoRoutes = require('./src/routes/todoRoutes');
 const app = express();
 
-// Basic middleware
-app.use(express.json());
-
-// Health check - le plus simple possible
+// Juste le healthcheck
 app.get('/test', (req, res) => res.sendStatus(200));
 
-// Routes
-app.get('/', (req, res) => res.send('API is running'));
-app.use('/api/todos', todoRoutes);
+// Middleware minimal
+app.use(express.json());
 
-// Export for Vercel
+// Routes de base
+app.get('/', (req, res) => res.send('OK'));
+app.use('/api/todos', require('./src/routes/todoRoutes'));
+
+// Export
 module.exports = app; 

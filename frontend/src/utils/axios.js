@@ -1,8 +1,8 @@
 import axios from 'axios';
 
 const baseURL = import.meta.env.PROD 
-  ? 'https://todolist-api-seven.vercel.app/api'
-  : 'http://localhost:3000/api';
+  ? 'https://todolist-api-seven.vercel.app'
+  : 'http://localhost:3000';
 
 const instance = axios.create({
   baseURL,
