@@ -1,59 +1,34 @@
-# Todolist API
+# TodoList App
 
-Une API de liste de tâches personnalisée avec MongoDB et Express.js
+Une application de gestion de tâches moderne construite avec la stack MEVN (MongoDB, Express.js, Vue.js, Node.js).
 
-## Technologies utilisées
+## 🌟 Fonctionnalités
 
+- ✅ Création, modification et suppression de tâches
+- 📅 Organisation par date et heure
+- 🏷️ Catégorisation des tâches (Maison, Courses, Santé, Famille, Autre)
+- ⚡ Indication des tâches urgentes (< 24h)
+- 🔄 Synchronisation automatique avec le serveur
+- 💾 Mode hors-ligne avec stockage local
+- 📱 Interface responsive
+
+## 🚀 Démo
+
+- Frontend : [https://todolist-vue.vercel.app](https://todolist-vue.vercel.app)
+- API : [https://todolist-api-seven.vercel.app](https://todolist-api-seven.vercel.app)
+
+## 🛠️ Technologies Utilisées
+
+### Frontend
+- Vue.js 3 avec Composition API
+- Vite
+- Vuex pour la gestion d'état
+- Axios pour les requêtes HTTP
+
+### Backend
 - Node.js
 - Express.js
-- MongoDB
-- Mongoose
-- Cors
-- Dotenv
+- MongoDB avec Mongoose
+- CORS
 
-## Installation
-
-1. Cloner le projet
-```bash
-git clone https://github.com/Devco01/Todolist_API.git
-cd Todolist_API/backend
-```
-
-2. Installer les dépendances
-```bash
-npm install
-```
-
-3. Configurer les variables d'environnement
-Créer un fichier `.env` dans le dossier backend avec :
-```
-MONGODB_URI=votre_uri_mongodb
-PORT=3000
-```
-
-4. Lancer le serveur
-```bash
-npm run dev
-```
-
-## Endpoints API
-
-- `GET /api/todos` - Récupérer toutes les tâches
-- `POST /api/todos` - Créer une nouvelle tâche
-- `PUT /api/todos/:id` - Mettre à jour une tâche
-- `DELETE /api/todos/:id` - Supprimer une tâche
-
-## Structure des données
-
-Une tâche contient :
-- title (obligatoire)
-- description
-- completed (par défaut: false)
-- priority (basse, moyenne, haute)
-- category (maison, courses, santé, famille, autre)
-- dueDate
-- createdAt
-
-## Déploiement
-
-L'API est configurée pour être déployée sur Vercel.
+Copyright @ 2025 Devco01
