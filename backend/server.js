@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
+const allowCors = require('./api/cors');
 
 // Ajout de cette ligne pour supprimer l'avertissement
 mongoose.set('strictQuery', false);
@@ -13,6 +14,8 @@ const app = express();
 // Middleware CORS avant tout
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
+  // ou plus spécifiquement :
+  // res.setHeader('Access-Control-Allow-Origin', 'https://todolist-17q1wd367-devco01s-projects.vercel.app');
   res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
   res.setHeader('Access-Control-Max-Age', '86400');
@@ -85,10 +88,20 @@ app.use((err, req, res, next) => {
   });
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Serveur démarré sur le port ${PORT}`);
-});
+// Envelopper l'application avec le middleware CORS
+const handler = (req, res) => {
+  app(req, res);
+};
+
+module.exports = allowCors(handler);
+
+// Garder l'écoute du port uniquement en développement
+if (process.env.NODE_ENV !== 'production') {
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => {
+    console.log(`Serveur démarré sur le port ${PORT}`);
+  });
+}
 
 process.on('unhandledRejection', (err) => {
   console.error('Erreur non gérée:', err);
