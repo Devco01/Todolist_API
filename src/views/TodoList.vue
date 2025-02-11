@@ -509,4 +509,36 @@ input[type="date"], input[type="time"] {
   background: #ffe6e6;
   color: #d00;
 }
+
+/* Images de fond */
+.todo-list::before,
+.todo-list::after {
+  content: '';
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  width: calc((100vw - 900px) / 2);
+  height: 100vh;
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-position: center;
+  z-index: -1;
+  opacity: 0.95;
+}
+
+.todo-list::before {
+  left: 0;
+  background-image: url('/images/Fond_écran_1.jpg');
+  box-shadow: inset -10px 0 30px rgba(0, 0, 51, 0.8);
+  mask-image: linear-gradient(to right, rgba(0,0,0,1) 80%, rgba(0,0,0,0));
+  -webkit-mask-image: linear-gradient(to right, rgba(0,0,0,1) 80%, rgba(0,0,0,0));
+}
+
+.todo-list::after {
+  right: 0;
+  background-image: url('/images/Fond-écran_2.jpg');
+  box-shadow: inset 10px 0 30px rgba(0, 0, 51, 0.8);
+  mask-image: linear-gradient(to left, rgba(0,0,0,1) 80%, rgba(0,0,0,0));
+  -webkit-mask-image: linear-gradient(to left, rgba(0,0,0,1) 80%, rgba(0,0,0,0));
+}
 </style> 
