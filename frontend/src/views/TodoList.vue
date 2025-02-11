@@ -166,10 +166,11 @@ export default {
             minutes: currentTime.minutes
           };
         } else {
-          alert('La tâche a été sauvegardée localement mais n\'a pas pu être synchronisée avec le serveur');
+          alert('Erreur de connexion au serveur. Vos modifications sont sauvegardées localement et seront synchronisées automatiquement.');
         }
       } catch (error) {
-        console.error('Erreur lors de l\'ajout:', error);
+        console.error('Erreur détaillée lors de l\'ajout:', error);
+        alert('Une erreur est survenue. Veuillez réessayer.');
       }
     }
 
@@ -181,11 +182,11 @@ export default {
       try {
         const success = await store.dispatch('deleteTodo', todoId);
         if (!success) {
-          console.error('Échec de la suppression');
-          return; // Ne pas continuer si l'API échoue
+          alert('Erreur lors de la suppression. Veuillez réessayer.');
         }
       } catch (error) {
         console.error('Erreur lors de la suppression:', error);
+        alert('Une erreur est survenue lors de la suppression.');
       }
     }
 
