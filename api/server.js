@@ -1,17 +1,17 @@
 const express = require('express');
 const app = express();
-const todoRoutes = require('./routes/todoRoutes');  // Chemin relatif correct
 
-// Middleware
+// Middleware pour parser le JSON
 app.use(express.json());
 
+// Middleware pour les logs
 app.use((req, res, next) => {
-  console.log(`${req.method} ${req.url}`);
+  console.log(`${req.method} ${req.url} - body:`, req.body);
   next();
 });
 
-// API routes
-app.use('/api/todos', todoRoutes);
+// Routes
+app.use('/api/todos', require('./routes/todoRoutes'));
 
 // Health check
 app.get('/api/health', (req, res) => {

@@ -1,15 +1,28 @@
 const router = require('express').Router();
 const todoStore = require('../store/todoStore');
 
-router.get('/', (req, res) => {
-  console.log('GET /todos');
-  res.json(todoStore.getAll());
+router.get('/', async (req, res) => {
+  console.log('GET /todos - début');
+  try {
+    const todos = await todoStore.getAll();
+    console.log('GET /todos - résultat:', todos);
+    res.json(todos);
+  } catch (error) {
+    console.error('GET /todos - erreur:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
 });
 
-router.post('/', (req, res) => {
-  console.log('POST /todos', req.body);
-  const todo = todoStore.add(req.body);
-  res.json(todo);
+router.post('/', async (req, res) => {
+  console.log('POST /todos - données:', req.body);
+  try {
+    const todo = await todoStore.add(req.body);
+    console.log('POST /todos - résultat:', todo);
+    res.json(todo);
+  } catch (error) {
+    console.error('POST /todos - erreur:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
 });
 
 router.put('/:id', (req, res) => {

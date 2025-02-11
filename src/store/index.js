@@ -14,17 +14,19 @@ export default createStore({
     error: null
   },
   getters: {
-    // Nouveau getter pour trier les todos
     sortedTodos: (state) => {
-      return [...state.todos].sort((a, b) => {
+      // S'assurer que state.todos est un tableau avant de le trier
+      const todos = Array.isArray(state.todos) ? state.todos : [];
+      return [...todos].sort((a, b) => {
+        if (!a.dueDate || !b.dueDate) return 0;
         // Convertir date et heure en timestamp pour comparaison
         const dateA = new Date(`${a.dueDate}T${a.dueTime || '00:00'}`).getTime();
         const dateB = new Date(`${b.dueDate}T${b.dueTime || '00:00'}`).getTime();
-        return dateA - dateB; // Tri croissant (plus proche au plus lointain)
+        return dateA - dateB;
       });
     },
-    // Nouveau getter pour calculer l'urgence
     isUrgent: () => (todo) => {
+      if (!todo || !todo.dueDate) return false;
       const now = new Date().getTime();
       const dueDate = new Date(`${todo.dueDate}T${todo.dueTime || '00:00'}`).getTime();
       const hoursLeft = (dueDate - now) / (1000 * 60 * 60);
