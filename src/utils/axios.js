@@ -1,10 +1,11 @@
 import axios from 'axios';
 
-const baseURL = import.meta.env.VITE_API_URL || '/api';
-
 const instance = axios.create({
-  baseURL,
-  timeout: 10000
+  baseURL: import.meta.env.VITE_API_URL,
+  timeout: 30000,  // 30 secondes
+  headers: {
+    'Content-Type': 'application/json'
+  }
 });
 
 // Add request interceptor for debugging

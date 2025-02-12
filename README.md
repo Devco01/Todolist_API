@@ -1,44 +1,33 @@
-# TodoList App
+# TodoList API
 
-Une application de gestion de tâches moderne construite avec la stack MEVN (MongoDB, Express.js, Vue.js, Node.js).
+Une application de gestion de tâches avec Vue.js et MongoDB.
 
-## 🌟 Fonctionnalités
+## Installation
 
-- ✅ Création, modification et suppression de tâches
-- 📅 Organisation par date et heure
-- 🏷️ Catégorisation des tâches (Maison, Courses, Santé, Famille, Autre)
-- ⚡ Indication des tâches urgentes (< 24h)
-- 🔄 Synchronisation automatique avec le serveur
-- 💾 Mode hors-ligne avec stockage local
-- 📱 Interface responsive
+```bash
+# Installation des dépendances
+npm install
 
-## 🚀 Démo
+# Configuration
+cp .env.example .env
+# Modifier .env avec vos variables d'environnement
 
-- Frontend : [https://todolist-vue.vercel.app](https://todolist-vue.vercel.app)
-- API : [https://todolist-api-seven.vercel.app](https://todolist-api-seven.vercel.app)
+# Développement
+npm run dev:all
 
-## 🛠️ Technologies Utilisées
+# Production
+npm run build
+npm run serve
+```
 
-### Frontend
-- Vue.js 3 avec Composition API
-- Vite
-- Vuex pour la gestion d'état
-- Axios pour les requêtes HTTP
+## Variables d'environnement
 
-### Backend
-- Node.js
-- Express.js
-- MongoDB avec Mongoose
-- CORS
+- `MONGODB_URI` : URI de connexion MongoDB
+- `PORT` : Port du serveur (défaut: 3000)
+- `VITE_API_URL` : URL de l'API (défaut: /api)
 
-## URLs de l'application
+## Technologies
 
-### Production
-- Frontend: https://todolist-vue.vercel.app
-- API: https://todolist-api-seven.vercel.app/api
-
-### Développement
-- Frontend: http://localhost:5173
-- API: http://localhost:3000/api
-
-Copyright @ 2025 Devco01
+- Frontend : Vue.js, Vuex, Vue Router
+- Backend : Express.js, MongoDB
+- Déploiement : Vercel
