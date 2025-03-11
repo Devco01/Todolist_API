@@ -2,9 +2,6 @@
 
 Une application moderne de gestion de tâches construite avec Vue.js et Express.js, avec un thème visuel inspiré de l'univers de Mushishi.
 
-![Aperçu de l'application](mushishi_wallpaper.jpeg)
-=======
-=======
 ## Technologies
 
 - Frontend : Vue.js, Vuex, Vue Router
