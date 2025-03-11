@@ -111,18 +111,3 @@ npm run dev
 └── README.md             # Documentation
 ```
 
-## Déploiement
-
-L'application peut être déployée sur diverses plateformes comme Vercel, Netlify, Heroku, etc.
-
-### Déploiement sur Vercel
-
-1. Installer Vercel CLI
-```bash
-npm install -g vercel
-```
-
-2. Déployer
-```bash
-vercel
-```
