@@ -17,7 +17,8 @@ export default createStore({
     todos: loadTodosFromStorage(),
     loading: false,
     error: null,
-    isOfflineMode: false
+    isOfflineMode: false,
+    notificationStatus: null
   },
   getters: {
     sortedTodos: (state) => {
@@ -37,6 +38,9 @@ export default createStore({
       const dueDate = new Date(`${todo.dueDate}T${todo.dueTime || '00:00'}`).getTime();
       const hoursLeft = (dueDate - now) / (1000 * 60 * 60);
       return hoursLeft <= 24 && hoursLeft > 0;
+    },
+    todosWithNotifications: (state) => {
+      return state.todos.filter(todo => todo.notificationsEnabled && !todo.completed);
     }
   },
   mutations: {
@@ -72,6 +76,9 @@ export default createStore({
     },
     SET_OFFLINE_MODE(state, value) {
       state.isOfflineMode = value;
+    },
+    SET_NOTIFICATION_STATUS(state, status) {
+      state.notificationStatus = status;
     }
   },
   actions: {
@@ -168,6 +175,62 @@ export default createStore({
           commit('DELETE_TODO', id);
           return { success: true, offline: true };
         }
+        
+        return { success: false, error: errorMessage };
+      }
+    },
+    async updateNotificationSettings({ commit, dispatch }, { todoId, notificationsEnabled, notificationEmail }) {
+      commit('SET_ERROR', null);
+      commit('SET_NOTIFICATION_STATUS', null);
+      
+      try {
+        const { data } = await axios.put(`/notifications/${todoId}`, {
+          notificationsEnabled,
+          notificationEmail
+        });
+        
+        commit('UPDATE_TODO', data);
+        commit('SET_NOTIFICATION_STATUS', {
+          success: true,
+          message: notificationsEnabled 
+            ? 'Notifications activées avec succès' 
+            : 'Notifications désactivées'
+        });
+        
+        return { success: true, data };
+      } catch (error) {
+        const errorMessage = error.response?.data?.error || 'Erreur lors de la mise à jour des notifications';
+        commit('SET_ERROR', errorMessage);
+        commit('SET_NOTIFICATION_STATUS', {
+          success: false,
+          message: errorMessage
+        });
+        
+        return { success: false, error: errorMessage };
+      }
+    },
+    async testNotification({ commit }, { todoId, testEmail }) {
+      commit('SET_ERROR', null);
+      commit('SET_NOTIFICATION_STATUS', null);
+      
+      try {
+        const { data } = await axios.post(`/notifications/test/${todoId}`, {
+          testEmail
+        });
+        
+        commit('SET_NOTIFICATION_STATUS', {
+          success: true,
+          message: 'Email de test envoyé avec succès'
+        });
+        
+        return { success: true, message: data.message };
+      } catch (error) {
+        const errorMessage = error.response?.data?.error || 'Erreur lors de l\'envoi de l\'email de test';
+        commit('SET_ERROR', errorMessage);
+        commit('SET_NOTIFICATION_STATUS', {
+          success: false,
+          message: errorMessage
+        });
         
         return { success: false, error: errorMessage };
       }

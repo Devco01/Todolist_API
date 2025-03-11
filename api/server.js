@@ -1,6 +1,7 @@
 const express = require('express');
 const connectDB = require('./config/db');
 const cors = require('cors');
+const notificationService = require('./services/notificationService');
 const app = express();
 
 // Connect to MongoDB
@@ -10,38 +11,12 @@ connectDB().catch(err => {
   // process.exit(1);
 });
 
-// Configuration CORS plus permissive
-const corsOptions = {
-  origin: function (origin, callback) {
-    // Autoriser les requêtes sans origine (comme les appels d'API mobiles ou curl)
-    if (!origin) return callback(null, true);
-    
-    // Liste des origines autorisées
-    const allowedOrigins = [
-      // Origines de développement local
-      'http://localhost:5173',
-      'http://localhost:5174',
-      'http://127.0.0.1:5173',
-      'http://127.0.0.1:5174',
-      // Origines de production (Vercel)
-      'https://todolist-api-devco01.vercel.app',
-      'https://todolist-api-git-main-devco01.vercel.app',
-      'https://todolist-api.vercel.app'
-    ];
-    
-    // Vérifier si l'origine est autorisée
-    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
-      callback(null, true);
-    } else {
-      callback(new Error('CORS non autorisé pour cette origine'), false);
-    }
-  },
+// Configuration CORS simplifiée pour autoriser toutes les origines
+app.use(cors({
+  origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
-};
-
-app.use(cors(corsOptions));
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 // Middleware
 app.use(express.json());
@@ -57,6 +32,7 @@ app.use((err, req, res, next) => {
 
 // Routes
 app.use('/api/todos', require('./routes/todoRoutes'));
+app.use('/api/notifications', require('./routes/notificationRoutes'));
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -67,5 +43,10 @@ app.get('/api/health', (req, res) => {
 app.use((req, res) => {
   res.status(404).json({ error: 'Route non trouvée' });
 });
+
+// Initialiser le service de notification
+if (process.env.NODE_ENV !== 'test') {
+  notificationService.initNotificationService();
+}
 
 module.exports = app; 

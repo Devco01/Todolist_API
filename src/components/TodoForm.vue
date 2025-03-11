@@ -121,6 +121,40 @@
         </div>
       </div>
       
+      <!-- Section de notification par email -->
+      <div class="form-group notification-section">
+        <div class="notification-header">
+          <label class="form-label">Notification par email</label>
+          <div class="toggle-container">
+            <input 
+              type="checkbox" 
+              id="notifications-toggle" 
+              v-model="todo.notificationsEnabled"
+              class="toggle-checkbox"
+            >
+            <label for="notifications-toggle" class="toggle-label"></label>
+          </div>
+        </div>
+        
+        <div v-if="todo.notificationsEnabled" class="notification-details">
+          <div class="form-group">
+            <label for="notification-email" class="form-label">Adresse email</label>
+            <input 
+              id="notification-email"
+              v-model="todo.notificationEmail"
+              type="email"
+              placeholder="Votre adresse email"
+              class="form-control"
+              required
+            >
+          </div>
+          <p class="notification-info">
+            <i class="notification-icon">ℹ️</i>
+            Vous recevrez un email 1 heure avant l'échéance de cette tâche.
+          </p>
+        </div>
+      </div>
+      
       <div class="form-actions">
         <button type="button" @click="$emit('cancel')" class="cancel-btn">Annuler</button>
         <button type="submit" class="submit-btn">
@@ -148,7 +182,9 @@ export default {
       dueDate: new Date().toISOString().split('T')[0],
       category: 'autre',
       priority: 'medium',
-      completed: false
+      completed: false,
+      notificationsEnabled: false,
+      notificationEmail: ''
     })
 
     const submitForm = async () => {
@@ -168,7 +204,9 @@ export default {
           dueDate: new Date().toISOString().split('T')[0],
           category: 'autre',
           priority: 'medium',
-          completed: false
+          completed: false,
+          notificationsEnabled: false,
+          notificationEmail: ''
         }
         hours.value = '12'
         minutes.value = '00'
@@ -361,5 +399,84 @@ export default {
   .submit-btn, .cancel-btn {
     width: 100%;
   }
+}
+
+.notification-section {
+  background-color: rgba(255, 255, 255, 0.2);
+  border-radius: var(--border-radius);
+  padding: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.notification-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.toggle-container {
+  position: relative;
+  width: 50px;
+  height: 24px;
+}
+
+.toggle-checkbox {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-label {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  transition: .4s;
+  border-radius: 34px;
+}
+
+.toggle-label:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 4px;
+  bottom: 4px;
+  background-color: white;
+  transition: .4s;
+  border-radius: 50%;
+}
+
+.toggle-checkbox:checked + .toggle-label {
+  background-color: var(--primary);
+}
+
+.toggle-checkbox:checked + .toggle-label:before {
+  transform: translateX(26px);
+}
+
+.notification-details {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.notification-info {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--dark);
+  margin-top: 0.5rem;
+  background-color: rgba(255, 255, 255, 0.5);
+  padding: 0.75rem;
+  border-radius: var(--border-radius);
+}
+
+.notification-icon {
+  font-style: normal;
 }
 </style>

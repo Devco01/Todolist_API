@@ -53,6 +53,12 @@
     </div>
     
     <div class="todo-actions">
+      <button @click="toggleNotification" class="action-btn notification-btn" :title="notificationTitle" :class="{ active: todo.notificationsEnabled }">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+        </svg>
+      </button>
       <button @click="editTodo" class="action-btn edit-btn" title="Modifier">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
@@ -69,10 +75,54 @@
       </button>
     </div>
   </div>
+  
+  <!-- Modal de notification -->
+  <div v-if="showNotificationModal" class="notification-modal-overlay" @click="closeNotificationModal">
+    <div class="notification-modal" @click.stop>
+      <h3 class="modal-title">Notification par email</h3>
+      
+      <div class="notification-toggle">
+        <label for="notification-toggle">Activer les notifications</label>
+        <div class="toggle-container">
+          <input 
+            type="checkbox" 
+            id="notification-toggle" 
+            v-model="notificationSettings.enabled"
+            class="toggle-checkbox"
+          >
+          <label for="notification-toggle" class="toggle-label"></label>
+        </div>
+      </div>
+      
+      <div v-if="notificationSettings.enabled" class="notification-form">
+        <div class="form-group">
+          <label for="notification-email-input" class="form-label">Adresse email</label>
+          <input 
+            id="notification-email-input"
+            v-model="notificationSettings.email"
+            type="email"
+            placeholder="Votre adresse email"
+            class="form-control"
+            required
+          >
+        </div>
+        
+        <p class="notification-info">
+          <i class="notification-icon">ℹ️</i>
+          Vous recevrez un email 1 heure avant l'échéance de cette tâche.
+        </p>
+      </div>
+      
+      <div class="modal-actions">
+        <button @click="closeNotificationModal" class="cancel-btn">Annuler</button>
+        <button @click="saveNotificationSettings" class="save-btn">Enregistrer</button>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useStore } from 'vuex'
 
 export default {
@@ -86,6 +136,11 @@ export default {
   emits: ['delete', 'edit'],
   setup(props, { emit }) {
     const store = useStore()
+    const showNotificationModal = ref(false)
+    const notificationSettings = ref({
+      enabled: false,
+      email: ''
+    })
 
     const isUrgent = computed(() => {
       if (!props.todo.dueDate) return false;
@@ -93,6 +148,12 @@ export default {
       const dueDate = new Date(`${props.todo.dueDate}T${props.todo.dueTime || '00:00'}`).getTime();
       const hoursLeft = (dueDate - now) / (1000 * 60 * 60);
       return hoursLeft <= 24 && hoursLeft > 0;
+    });
+    
+    const notificationTitle = computed(() => {
+      return props.todo.notificationsEnabled 
+        ? 'Notifications activées' 
+        : 'Configurer les notifications';
     });
 
     const toggleComplete = () => {
@@ -104,6 +165,43 @@ export default {
 
     const editTodo = () => {
       emit('edit', props.todo);
+    };
+    
+    const toggleNotification = () => {
+      // Initialiser les paramètres avec les valeurs actuelles
+      notificationSettings.value = {
+        enabled: props.todo.notificationsEnabled || false,
+        email: props.todo.notificationEmail || ''
+      };
+      showNotificationModal.value = true;
+    };
+    
+    const closeNotificationModal = () => {
+      showNotificationModal.value = false;
+    };
+    
+    const saveNotificationSettings = async () => {
+      // Valider l'email si les notifications sont activées
+      if (notificationSettings.value.enabled && !notificationSettings.value.email) {
+        alert('Veuillez saisir une adresse email valide');
+        return;
+      }
+      
+      // Mettre à jour les paramètres de notification
+      try {
+        await store.dispatch('updateTodo', {
+          ...props.todo,
+          notificationsEnabled: notificationSettings.value.enabled,
+          notificationEmail: notificationSettings.value.email,
+          notificationSent: false // Réinitialiser le statut d'envoi
+        });
+        
+        // Fermer la modal
+        showNotificationModal.value = false;
+      } catch (error) {
+        console.error('Erreur lors de la mise à jour des notifications:', error);
+        alert('Une erreur est survenue lors de la mise à jour des notifications');
+      }
     };
 
     const formatDate = (date) => {
@@ -146,7 +244,13 @@ export default {
       formatDate,
       formatTime,
       getCategoryLabel,
-      getPriorityLabel
+      getPriorityLabel,
+      showNotificationModal,
+      notificationSettings,
+      toggleNotification,
+      closeNotificationModal,
+      saveNotificationSettings,
+      notificationTitle
     };
   }
 };
@@ -428,5 +532,150 @@ export default {
     margin-top: 0.5rem;
     margin-left: 0;
   }
+}
+
+.notification-btn {
+  color: var(--gray);
+}
+
+.notification-btn.active {
+  color: var(--primary);
+}
+
+.notification-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  backdrop-filter: blur(3px);
+}
+
+.notification-modal {
+  background-color: white;
+  border-radius: var(--border-radius);
+  padding: 1.5rem;
+  width: 90%;
+  max-width: 500px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+}
+
+.modal-title {
+  margin-top: 0;
+  margin-bottom: 1.5rem;
+  color: var(--dark);
+  font-weight: 600;
+  text-align: center;
+}
+
+.notification-toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.toggle-container {
+  position: relative;
+  width: 50px;
+  height: 24px;
+}
+
+.toggle-checkbox {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-label {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  transition: .4s;
+  border-radius: 34px;
+}
+
+.toggle-label:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 4px;
+  bottom: 4px;
+  background-color: white;
+  transition: .4s;
+  border-radius: 50%;
+}
+
+.toggle-checkbox:checked + .toggle-label {
+  background-color: var(--primary);
+}
+
+.toggle-checkbox:checked + .toggle-label:before {
+  transform: translateX(26px);
+}
+
+.notification-form {
+  margin-top: 1rem;
+}
+
+.notification-info {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--gray);
+  margin-top: 0.5rem;
+  background-color: var(--light);
+  padding: 0.75rem;
+  border-radius: var(--border-radius);
+}
+
+.notification-icon {
+  font-style: normal;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.cancel-btn, .save-btn {
+  padding: 0.5rem 1rem;
+  border-radius: var(--border-radius);
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.cancel-btn {
+  background-color: var(--light);
+  color: var(--dark);
+  border: 1px solid var(--gray-light);
+}
+
+.save-btn {
+  background-color: var(--primary);
+  color: white;
+  border: 1px solid var(--primary);
+}
+
+.cancel-btn:hover {
+  background-color: var(--gray-light);
+}
+
+.save-btn:hover {
+  background-color: var(--primary-dark);
 }
 </style>
