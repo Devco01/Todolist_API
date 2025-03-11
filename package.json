@@ -4,9 +4,9 @@
   "scripts": {
     "dev": "vite",
     "build": "npm run vercel-build",
-    "serve": "node api/server.js",
+    "serve": "node api/index.js",
     "dev:all": "concurrently \"npm run dev\" \"npm run dev:api\"",
-    "dev:api": "nodemon api/server.js",
+    "dev:api": "nodemon api/index.js",
     "vercel-build": "vite build",
     "postinstall": "npm run build",
     "init-blob": "node scripts/init-blob.js"
