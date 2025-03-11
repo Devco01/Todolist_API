@@ -7,11 +7,17 @@ const loadTodosFromStorage = () => {
   return savedTodos ? JSON.parse(savedTodos) : []
 }
 
+// Fonction pour sauvegarder les todos dans le localStorage
+const saveTodosToStorage = (todos) => {
+  localStorage.setItem('todos', JSON.stringify(todos))
+}
+
 export default createStore({
   state: {
-    todos: [],
+    todos: loadTodosFromStorage(),
     loading: false,
-    error: null
+    error: null,
+    isOfflineMode: false
   },
   getters: {
     sortedTodos: (state) => {
@@ -42,21 +48,30 @@ export default createStore({
     },
     SET_TODOS(state, todos) {
       state.todos = Array.isArray(todos) ? todos : [];
+      // Sauvegarder dans le localStorage
+      saveTodosToStorage(state.todos);
     },
     ADD_TODO(state, todo) {
       if (!todo) return;
       
       if (!Array.isArray(state.todos)) state.todos = [];
       state.todos.unshift(todo);
+      // Sauvegarder dans le localStorage
+      saveTodosToStorage(state.todos);
     },
     UPDATE_TODO(state, todo) {
-      console.log('Mutation UPDATE_TODO:', todo);
       const index = state.todos.findIndex(t => t._id === todo._id);
       if (index !== -1) state.todos.splice(index, 1, todo);
+      // Sauvegarder dans le localStorage
+      saveTodosToStorage(state.todos);
     },
     DELETE_TODO(state, id) {
-      console.log('Mutation DELETE_TODO:', id);
       state.todos = state.todos.filter(t => t._id !== id);
+      // Sauvegarder dans le localStorage
+      saveTodosToStorage(state.todos);
+    },
+    SET_OFFLINE_MODE(state, value) {
+      state.isOfflineMode = value;
     }
   },
   actions: {
@@ -64,56 +79,97 @@ export default createStore({
       commit('SET_LOADING', true);
       commit('SET_ERROR', null);
       try {
-        console.log('Action fetchTodos');
         const { data } = await axios.get('/todos');
         commit('SET_TODOS', data);
+        commit('SET_OFFLINE_MODE', false);
+        return { success: true, data };
       } catch (error) {
-        commit('SET_ERROR', 'Erreur lors du chargement des todos');
-        console.error('fetchTodos error:', error);
+        const errorMessage = error.response?.data?.error || 'Erreur lors du chargement des tâches';
+        commit('SET_ERROR', errorMessage);
+        
+        // Si pas de réponse du serveur, utiliser le stockage local
+        if (!error.response) {
+          commit('SET_OFFLINE_MODE', true);
+          const localTodos = loadTodosFromStorage();
+          commit('SET_TODOS', localTodos);
+          return { success: true, data: localTodos, offline: true };
+        }
+        
+        return { success: false, error: errorMessage };
       } finally {
         commit('SET_LOADING', false);
       }
     },
-    async createTodo({ commit }, todo) {
+    async createTodo({ commit, state }, todo) {
       commit('SET_ERROR', null);
       try {
         const { data } = await axios.post('/todos', todo);
         if (data && data._id) {
           commit('ADD_TODO', data);
-          return { success: true };
+          commit('SET_OFFLINE_MODE', false);
+          return { success: true, data };
         } else {
-          throw new Error('Invalid response from server');
+          throw new Error('Réponse invalide du serveur');
         }
       } catch (error) {
-        commit('SET_ERROR', 'Erreur lors de la création');
-        console.error('createTodo error:', error);
-        return { success: false, error };
+        const errorMessage = error.response?.data?.error || 'Erreur lors de la création de la tâche';
+        commit('SET_ERROR', errorMessage);
+        
+        // Si pas de réponse du serveur, utiliser le stockage local
+        if (!error.response) {
+          commit('SET_OFFLINE_MODE', true);
+          const newTodo = {
+            ...todo,
+            _id: Math.random().toString(36).substring(2, 15),
+            createdAt: new Date().toISOString()
+          };
+          commit('ADD_TODO', newTodo);
+          return { success: true, data: newTodo, offline: true };
+        }
+        
+        return { success: false, error: errorMessage };
       }
     },
-    async updateTodo({ commit }, todo) {
+    async updateTodo({ commit, state }, todo) {
       commit('SET_ERROR', null);
       try {
-        console.log('Action updateTodo:', todo);
         const { data } = await axios.put(`/todos/${todo._id}`, todo);
         commit('UPDATE_TODO', data);
-        return { success: true };
+        commit('SET_OFFLINE_MODE', false);
+        return { success: true, data };
       } catch (error) {
-        commit('SET_ERROR', 'Erreur lors de la mise à jour');
-        console.error('updateTodo error:', error);
-        return { success: false, error };
+        const errorMessage = error.response?.data?.error || 'Erreur lors de la mise à jour de la tâche';
+        commit('SET_ERROR', errorMessage);
+        
+        // Si pas de réponse du serveur, utiliser le stockage local
+        if (!error.response) {
+          commit('SET_OFFLINE_MODE', true);
+          commit('UPDATE_TODO', todo);
+          return { success: true, data: todo, offline: true };
+        }
+        
+        return { success: false, error: errorMessage };
       }
     },
-    async deleteTodo({ commit }, id) {
+    async deleteTodo({ commit, state }, id) {
       commit('SET_ERROR', null);
       try {
-        console.log('Action deleteTodo:', id);
         await axios.delete(`/todos/${id}`);
         commit('DELETE_TODO', id);
+        commit('SET_OFFLINE_MODE', false);
         return { success: true };
       } catch (error) {
-        commit('SET_ERROR', 'Erreur lors de la suppression');
-        console.error('deleteTodo error:', error);
-        return { success: false, error };
+        const errorMessage = error.response?.data?.error || 'Erreur lors de la suppression de la tâche';
+        commit('SET_ERROR', errorMessage);
+        
+        // Si pas de réponse du serveur, utiliser le stockage local
+        if (!error.response) {
+          commit('SET_OFFLINE_MODE', true);
+          commit('DELETE_TODO', id);
+          return { success: true, offline: true };
+        }
+        
+        return { success: false, error: errorMessage };
       }
     }
   }
