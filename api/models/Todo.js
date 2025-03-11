@@ -31,7 +31,55 @@ const todoSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now
+  },
+  notificationEmail: {
+    type: String,
+    validate: {
+      validator: function(v) {
+        return /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/.test(v) || v === '';
+      },
+      message: props => `${props.value} n'est pas une adresse email valide!`
+    }
+  },
+  notificationsEnabled: {
+    type: Boolean,
+    default: false
+  },
+  notificationSent: {
+    type: Boolean,
+    default: false
   }
 });
+
+todoSchema.methods.shouldNotify = function() {
+  if (!this.notificationsEnabled || this.notificationSent || this.completed) {
+    return false;
+  }
+  
+  if (!this.notificationEmail) {
+    return false;
+  }
+  
+  if (!this.dueDate || !this.dueTime) {
+    return false;
+  }
+  
+  const [day, month, year] = this.dueDate.split('/');
+  const [hours, minutes] = this.dueTime.split(':');
+  
+  const dueDateTime = new Date(
+    parseInt(year), 
+    parseInt(month) - 1, 
+    parseInt(day), 
+    parseInt(hours), 
+    parseInt(minutes)
+  );
+  
+  const now = new Date();
+  
+  const diff = dueDateTime.getTime() - now.getTime();
+  
+  return diff > 0 && diff <= 3600000;
+};
 
 module.exports = mongoose.model('Todo', todoSchema); 
