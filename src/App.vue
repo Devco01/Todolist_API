@@ -1,50 +1,131 @@
 <template>
   <div class="app-container">
-    <router-view></router-view>
+    <div class="bg-image"></div>
+    <div class="content-wrapper">
+      <router-view></router-view>
+    </div>
   </div>
 </template>
 
 <style>
+/* Import de polices Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+
 /* Styles globaux */
+:root {
+  --primary: #4a7c59;
+  --primary-light: #6a9e78;
+  --secondary: #2c5530;
+  --accent: #d4a373;
+  --success: #588157;
+  --warning: #d9a557;
+  --danger: #bc4749;
+  --light: #f8f9fa;
+  --dark: #1b2e1e;
+  --gray: #6c757d;
+  --gray-light: #e9ecef;
+  --border-radius: 8px;
+  --box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+  --transition: all 0.3s ease;
+  --overlay-light: rgba(255, 255, 255, 0.85);
+  --overlay-dark: rgba(27, 46, 30, 0.7);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
 body {
   margin: 0;
   padding: 0;
   min-height: 100vh;
-  background: linear-gradient(135deg, 
-    #000033 0%,
-    #000066 20%,
-    #000080 50%,
-    #000066 80%,
-    #000033 100%
-  );
-  font-family: 'Avenir', Helvetica, Arial, sans-serif;
+  font-family: 'Poppins', 'Inter', 'Avenir', Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  color: var(--dark);
+  line-height: 1.6;
+  background-color: #1b2e1e;
 }
 
 .app-container {
   min-height: 100vh;
   height: fit-content;
   padding: 0;
-  box-sizing: border-box;
-  background-color: rgba(0, 0, 51, 0.6);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.bg-image {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: url('/images/mushishi_wallpaper.jpeg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  z-index: -1;
+  opacity: 0.9;
+}
+
+.content-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  z-index: 1;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Poppins', sans-serif;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: var(--dark);
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  border-radius: var(--border-radius);
+  padding: 0.5rem 1rem;
+  font-weight: 500;
+  transition: var(--transition);
+}
+
+input, select, textarea {
+  border: 1px solid var(--gray-light);
+  border-radius: var(--border-radius);
+  padding: 0.5rem;
+  font-size: 1rem;
+  transition: var(--transition);
+  background-color: rgba(255, 255, 255, 0.9);
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(74, 124, 89, 0.2);
 }
 
 /* Personnalisation de la barre de défilement */
 ::-webkit-scrollbar {
-  width: 10px;
+  width: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #000066;
+  background: var(--gray-light);
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #4169e1;
-  border-radius: 5px;
+  background: var(--primary-light);
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #1e90ff;
+  background: var(--primary);
 }
 </style> 
