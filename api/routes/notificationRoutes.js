@@ -2,6 +2,17 @@ const router = require('express').Router();
 const Todo = require('../models/Todo');
 const notificationService = require('../services/notificationService');
 
+// Obtenir les statistiques de notification
+router.get('/stats', (req, res) => {
+  try {
+    const stats = notificationService.getNotificationStats();
+    res.json(stats);
+  } catch (error) {
+    console.error('Error fetching notification stats:', error);
+    res.status(500).json({ error: 'Erreur lors de la récupération des statistiques de notification' });
+  }
+});
+
 // Mettre à jour les préférences de notification pour une tâche
 router.put('/:id', async (req, res) => {
   try {
@@ -58,7 +69,10 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Tâche non trouvée' });
     }
     
-    res.json(todo);
+    res.json({
+      todo,
+      message: notificationsEnabled ? 'Notifications configurées avec succès' : 'Notifications désactivées'
+    });
   } catch (error) {
     console.error('Error updating notification preferences:', error);
     

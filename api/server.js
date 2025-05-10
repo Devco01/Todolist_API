@@ -1,5 +1,5 @@
 const express = require('express');
-const connectDB = require('./config/db');
+const { connectDB } = require('./config/db');
 const cors = require('cors');
 const notificationService = require('./services/notificationService');
 const app = express();
@@ -21,6 +21,13 @@ app.use(cors({
 // Middleware
 app.use(express.json());
 
+// Middleware pour vérifier l'état de la connexion MongoDB
+app.use((req, res, next) => {
+  // Ajouter l'information de connexion MongoDB à la réponse
+  res.locals.isMongoConnected = req.app.get('isMongoConnected') || false;
+  next();
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Server error:', err.stack);
@@ -36,7 +43,21 @@ app.use('/api/notifications', require('./routes/notificationRoutes'));
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.status(200).json({ status: 'ok' });
+  res.status(200).json({ 
+    status: 'ok',
+    mongoConnected: res.locals.isMongoConnected
+  });
+});
+
+// Informations sur le système
+app.get('/api/system-info', (req, res) => {
+  res.status(200).json({
+    version: process.env.npm_package_version || '1.0.0',
+    nodeVersion: process.version,
+    environment: process.env.NODE_ENV || 'development',
+    mongoConnected: res.locals.isMongoConnected,
+    uptime: Math.floor(process.uptime())
+  });
 });
 
 // 404 handler

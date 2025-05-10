@@ -4,8 +4,57 @@
     <div class="content-wrapper">
       <router-view></router-view>
     </div>
+    
+    <!-- Notification globale -->
+    <transition name="slide">
+      <div v-if="notificationStatus" 
+           class="global-notification" 
+           :class="{ success: notificationStatus.success, error: !notificationStatus.success }">
+        <span class="notification-icon">{{ notificationStatus.success ? '✓' : '✗' }}</span>
+        {{ notificationStatus.message }}
+      </div>
+    </transition>
   </div>
 </template>
+
+<script>
+import { computed, watchEffect } from 'vue';
+import { useStore } from 'vuex';
+
+export default {
+  setup() {
+    const store = useStore();
+    
+    const notificationStatus = computed(() => store.state.notificationStatus);
+    
+    // Cacher automatiquement la notification après 3 secondes
+    let notificationTimeout = null;
+    
+    const clearNotification = () => {
+      if (notificationTimeout) {
+        clearTimeout(notificationTimeout);
+      }
+      
+      if (notificationStatus.value) {
+        notificationTimeout = setTimeout(() => {
+          store.commit('SET_NOTIFICATION_STATUS', null);
+        }, 3000);
+      }
+    };
+    
+    // Observer les changements de statut de notification
+    watchEffect(() => {
+      if (notificationStatus.value) {
+        clearNotification();
+      }
+    });
+    
+    return {
+      notificationStatus
+    };
+  }
+}
+</script>
 
 <style>
 /* Import de polices Google Fonts */
@@ -108,6 +157,66 @@ input:focus, select:focus, textarea:focus {
   outline: none;
   border-color: var(--primary);
   box-shadow: 0 0 0 2px rgba(74, 124, 89, 0.2);
+}
+
+/* Notification globale */
+.global-notification {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  padding: 15px 20px;
+  color: white;
+  border-radius: var(--border-radius);
+  box-shadow: var(--box-shadow);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  animation: slide-in 0.3s ease-out forwards;
+  font-weight: 500;
+}
+
+.global-notification.success {
+  background-color: var(--success);
+}
+
+.global-notification.error {
+  background-color: var(--danger);
+}
+
+.notification-icon {
+  font-size: 1.2rem;
+  font-weight: bold;
+}
+
+@keyframes slide-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.slide-enter-active {
+  animation: slide-in 0.3s ease-out forwards;
+}
+
+.slide-leave-active {
+  animation: slide-out 0.3s ease-in forwards;
+}
+
+@keyframes slide-out {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
 }
 
 /* Personnalisation de la barre de défilement */

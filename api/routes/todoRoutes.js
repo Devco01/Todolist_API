@@ -1,17 +1,69 @@
 const router = require('express').Router();
 const Todo = require('../models/Todo');
+const db = require('../config/db');
 
-// Stockage en mémoire pour le développement local
-let inMemoryTodos = [];
+// Charger les todos sauvegardés en mémoire au démarrage
+let inMemoryTodos = db.loadBackupTodos();
 let isMongoConnected = false;
 
 // Vérifier si MongoDB est connecté
-try {
-  isMongoConnected = Todo.db && Todo.db.readyState === 1;
-} catch (error) {
-  console.log('Utilisation du stockage en mémoire pour les todos');
-  isMongoConnected = false;
-}
+const checkMongoConnection = () => {
+  try {
+    isMongoConnected = Todo.db && Todo.db.readyState === 1;
+  } catch (error) {
+    console.log('Utilisation du stockage en mémoire pour les todos');
+    isMongoConnected = false;
+  }
+  return isMongoConnected;
+};
+
+// Vérifier la connexion au démarrage
+checkMongoConnection();
+
+// Synchroniser les todos entre MongoDB et le stockage local
+const syncTodosWithMongoDB = async () => {
+  if (checkMongoConnection()) {
+    try {
+      // Charger tous les todos de MongoDB
+      const mongoTodos = await Todo.find().sort({ createdAt: -1 });
+      
+      // Si des todos existent en mémoire mais pas dans MongoDB, les ajouter à MongoDB
+      if (inMemoryTodos.length > 0) {
+        for (const memoryTodo of inMemoryTodos) {
+          const existsInMongo = mongoTodos.some(mt => 
+            mt._id.toString() === memoryTodo._id.toString() || 
+            (mt.title === memoryTodo.title && 
+             mt.createdAt === memoryTodo.createdAt)
+          );
+          
+          if (!existsInMongo) {
+            try {
+              const newTodo = new Todo(memoryTodo);
+              await newTodo.save();
+              console.log(`Todo synchronisé avec MongoDB: ${memoryTodo.title}`);
+            } catch (err) {
+              console.error(`Erreur lors de la synchronisation avec MongoDB: ${err}`);
+            }
+          }
+        }
+      }
+      
+      // Mettre à jour les todos en mémoire avec ceux de MongoDB
+      inMemoryTodos = mongoTodos;
+      db.saveBackupTodos(inMemoryTodos);
+      
+      console.log('Synchronisation avec MongoDB terminée');
+      return true;
+    } catch (error) {
+      console.error('Erreur lors de la synchronisation avec MongoDB:', error);
+      return false;
+    }
+  }
+  return false;
+};
+
+// Tenter de synchroniser au démarrage
+syncTodosWithMongoDB().catch(console.error);
 
 // Générer un ID unique pour les todos en mémoire
 const generateId = () => {
@@ -21,8 +73,13 @@ const generateId = () => {
 // Récupérer toutes les tâches
 router.get('/', async (req, res) => {
   try {
-    if (isMongoConnected) {
+    if (checkMongoConnection()) {
       const todos = await Todo.find().sort({ createdAt: -1 });
+      
+      // Mettre à jour la sauvegarde locale
+      inMemoryTodos = todos;
+      db.saveBackupTodos(todos);
+      
       res.json(todos);
     } else {
       // Utiliser le stockage en mémoire
@@ -43,10 +100,18 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Le titre est requis' });
     }
     
-    if (isMongoConnected) {
+    // Tentative de synchronisation avec MongoDB
+    await syncTodosWithMongoDB().catch(console.error);
+    
+    if (checkMongoConnection()) {
       try {
         const todo = new Todo(req.body);
         const savedTodo = await todo.save();
+        
+        // Ajouter à la mémoire et sauvegarder localement
+        inMemoryTodos.unshift(savedTodo);
+        db.saveBackupTodos(inMemoryTodos);
+        
         res.status(201).json(savedTodo);
       } catch (dbError) {
         console.error('MongoDB error:', dbError);
@@ -57,6 +122,7 @@ router.post('/', async (req, res) => {
           createdAt: new Date()
         };
         inMemoryTodos.unshift(newTodo);
+        db.saveBackupTodos(inMemoryTodos);
         res.status(201).json(newTodo);
       }
     } else {
@@ -67,6 +133,7 @@ router.post('/', async (req, res) => {
         createdAt: new Date()
       };
       inMemoryTodos.unshift(newTodo);
+      db.saveBackupTodos(inMemoryTodos);
       res.status(201).json(newTodo);
     }
   } catch (error) {
@@ -85,6 +152,7 @@ router.post('/', async (req, res) => {
       createdAt: new Date()
     };
     inMemoryTodos.unshift(newTodo);
+    db.saveBackupTodos(inMemoryTodos);
     res.status(201).json(newTodo);
   }
 });
@@ -94,7 +162,10 @@ router.put('/:id', async (req, res) => {
   try {
     const id = req.params.id;
     
-    if (isMongoConnected) {
+    // Tentative de synchronisation avec MongoDB
+    await syncTodosWithMongoDB().catch(console.error);
+    
+    if (checkMongoConnection()) {
       try {
         // Validation de l'ID pour MongoDB
         if (!id.match(/^[0-9a-fA-F]{24}$/)) {
@@ -111,6 +182,13 @@ router.put('/:id', async (req, res) => {
           return res.status(404).json({ error: 'Tâche non trouvée' });
         }
         
+        // Mettre à jour en mémoire et sauvegarder localement
+        const index = inMemoryTodos.findIndex(t => t._id.toString() === id);
+        if (index !== -1) {
+          inMemoryTodos[index] = todo;
+          db.saveBackupTodos(inMemoryTodos);
+        }
+        
         res.json(todo);
       } catch (dbError) {
         console.error('MongoDB error:', dbError);
@@ -121,6 +199,7 @@ router.put('/:id', async (req, res) => {
         }
         
         inMemoryTodos[index] = { ...inMemoryTodos[index], ...req.body };
+        db.saveBackupTodos(inMemoryTodos);
         res.json(inMemoryTodos[index]);
       }
     } else {
@@ -131,6 +210,7 @@ router.put('/:id', async (req, res) => {
       }
       
       inMemoryTodos[index] = { ...inMemoryTodos[index], ...req.body };
+      db.saveBackupTodos(inMemoryTodos);
       res.json(inMemoryTodos[index]);
     }
   } catch (error) {
@@ -147,6 +227,7 @@ router.put('/:id', async (req, res) => {
     const index = inMemoryTodos.findIndex(t => t._id === id);
     if (index !== -1) {
       inMemoryTodos[index] = { ...inMemoryTodos[index], ...req.body };
+      db.saveBackupTodos(inMemoryTodos);
       return res.json(inMemoryTodos[index]);
     }
     
@@ -159,7 +240,10 @@ router.delete('/:id', async (req, res) => {
   try {
     const id = req.params.id;
     
-    if (isMongoConnected) {
+    // Tentative de synchronisation avec MongoDB
+    await syncTodosWithMongoDB().catch(console.error);
+    
+    if (checkMongoConnection()) {
       try {
         // Validation de l'ID pour MongoDB
         if (!id.match(/^[0-9a-fA-F]{24}$/)) {
@@ -172,12 +256,17 @@ router.delete('/:id', async (req, res) => {
           return res.status(404).json({ error: 'Tâche non trouvée' });
         }
         
+        // Supprimer de la mémoire et sauvegarder localement
+        inMemoryTodos = inMemoryTodos.filter(t => t._id.toString() !== id);
+        db.saveBackupTodos(inMemoryTodos);
+        
         res.json({ success: true, message: 'Tâche supprimée avec succès' });
       } catch (dbError) {
         console.error('MongoDB error:', dbError);
         // Fallback vers le stockage en mémoire en cas d'erreur MongoDB
         const initialLength = inMemoryTodos.length;
         inMemoryTodos = inMemoryTodos.filter(t => t._id !== id);
+        db.saveBackupTodos(inMemoryTodos);
         
         if (inMemoryTodos.length === initialLength) {
           return res.status(404).json({ error: 'Tâche non trouvée' });
@@ -189,6 +278,7 @@ router.delete('/:id', async (req, res) => {
       // Suppression en mémoire
       const initialLength = inMemoryTodos.length;
       inMemoryTodos = inMemoryTodos.filter(t => t._id !== id);
+      db.saveBackupTodos(inMemoryTodos);
       
       if (inMemoryTodos.length === initialLength) {
         return res.status(404).json({ error: 'Tâche non trouvée' });
@@ -203,6 +293,7 @@ router.delete('/:id', async (req, res) => {
     const id = req.params.id;
     const initialLength = inMemoryTodos.length;
     inMemoryTodos = inMemoryTodos.filter(t => t._id !== id);
+    db.saveBackupTodos(inMemoryTodos);
     
     if (inMemoryTodos.length !== initialLength) {
       return res.json({ success: true, message: 'Tâche supprimée avec succès' });

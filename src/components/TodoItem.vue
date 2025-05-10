@@ -196,16 +196,41 @@ export default {
           notificationSent: false // Réinitialiser le statut d'envoi
         });
         
+        // Configurer la notification de confirmation
+        store.commit('SET_NOTIFICATION_STATUS', {
+          success: true,
+          message: notificationSettings.value.enabled 
+            ? 'Notifications configurées avec succès!'
+            : 'Notifications désactivées'
+        });
+        
         // Fermer la modal
         showNotificationModal.value = false;
       } catch (error) {
         console.error('Erreur lors de la mise à jour des notifications:', error);
-        alert('Une erreur est survenue lors de la mise à jour des notifications');
+        store.commit('SET_NOTIFICATION_STATUS', {
+          success: false,
+          message: 'Erreur lors de la configuration des notifications'
+        });
       }
     };
 
     const formatDate = (date) => {
-      return new Date(date).toLocaleDateString('fr-FR', {
+      if (!date) return '';
+      
+      // Si la date est au format YYYY-MM-DD, la convertir en DD/MM/YYYY
+      if (date.includes('-')) {
+        const [year, month, day] = date.split('-');
+        return new Date(`${year}-${month}-${day}`).toLocaleDateString('fr-FR', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric'
+        });
+      }
+      
+      // Si la date est déjà au format DD/MM/YYYY
+      const [day, month, year] = date.split('/');
+      return new Date(`${year}-${month}-${day}`).toLocaleDateString('fr-FR', {
         day: 'numeric',
         month: 'short',
         year: 'numeric'
@@ -213,6 +238,7 @@ export default {
     };
 
     const formatTime = (time) => {
+      if (!time) return '';
       return time;
     };
 

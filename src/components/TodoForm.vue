@@ -18,12 +18,16 @@
         <div class="form-col">
           <div class="form-group">
             <label for="dueDate" class="form-label">Date d'échéance</label>
-            <input 
-              id="dueDate"
-              v-model="todo.dueDate"
-              type="date"
-              class="form-control"
-            >
+            <div class="date-input-container">
+              <input 
+                id="dueDate"
+                v-model="todo.dueDate"
+                type="date"
+                class="form-control"
+                :min="getTodayDate()"
+                placeholder="JJ/MM/AAAA"
+              >
+            </div>
           </div>
         </div>
         
@@ -34,7 +38,8 @@
               <select 
                 id="hours"
                 v-model="hours"
-                class="form-control"
+                class="form-control time-select"
+                aria-label="Heures"
               >
                 <option v-for="hour in 24" :key="`hour-${hour-1}`" :value="String(hour-1).padStart(2, '0')">
                   {{ String(hour-1).padStart(2, '0') }}
@@ -44,7 +49,8 @@
               <select 
                 id="minutes"
                 v-model="minutes"
-                class="form-control"
+                class="form-control time-select"
+                aria-label="Minutes"
               >
                 <option v-for="minute in 12" :key="`minute-${(minute-1)*5}`" :value="String((minute-1)*5).padStart(2, '0')">
                   {{ String((minute-1)*5).padStart(2, '0') }}
@@ -162,11 +168,19 @@
         </button>
       </div>
     </form>
+    
+    <!-- Notification de confirmation -->
+    <transition name="slide">
+      <div v-if="showNotification" class="notification success">
+        <span class="notification-icon">✓</span>
+        {{ notificationMessage }}
+      </div>
+    </transition>
   </div>
 </template>
 
 <script>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useStore } from 'vuex'
 
 export default {
@@ -175,11 +189,13 @@ export default {
     const store = useStore()
     const hours = ref('12')
     const minutes = ref('00')
+    const notificationMessage = ref('')
+    const showNotification = ref(false)
     
     const todo = ref({
       title: '',
       description: '',
-      dueDate: new Date().toISOString().split('T')[0],
+      dueDate: getTodayDate(),
       category: 'autre',
       priority: 'medium',
       completed: false,
@@ -187,29 +203,121 @@ export default {
       notificationEmail: ''
     })
 
-    const submitForm = async () => {
-      // Combine hours and minutes into dueTime
-      const todoData = { 
-        ...todo.value,
-        dueTime: `${hours.value}:${minutes.value}`
-      }
+    function getTodayDate() {
+      const today = new Date();
+      const year = today.getFullYear();
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+      const day = String(today.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    function formatDateForDisplay(dateString) {
+      if (!dateString) return '';
       
-      const result = await store.dispatch('createTodo', todoData)
-      
-      if (result.success) {
-        // Reset form
-        todo.value = {
-          title: '',
-          description: '',
-          dueDate: new Date().toISOString().split('T')[0],
-          category: 'autre',
-          priority: 'medium',
-          completed: false,
-          notificationsEnabled: false,
-          notificationEmail: ''
+      try {
+        // Si au format ISO ou YYYY-MM-DD
+        if (dateString.includes('-')) {
+          const date = new Date(dateString);
+          if (isNaN(date.getTime())) return dateString;
+          
+          const day = String(date.getDate()).padStart(2, '0');
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const year = date.getFullYear();
+          
+          return `${day}/${month}/${year}`;
         }
-        hours.value = '12'
-        minutes.value = '00'
+        
+        // Déjà au bon format
+        return dateString;
+      } catch (err) {
+        console.error('Erreur lors du formatage de la date:', err);
+        return dateString;
+      }
+    }
+
+    function formatDateForStorage(dateString) {
+      if (!dateString) return '';
+      
+      try {
+        // Si déjà au format YYYY-MM-DD
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+          return dateString;
+        }
+        
+        // Si au format DD/MM/YYYY
+        if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateString)) {
+          const [day, month, year] = dateString.split('/');
+          return `${year}-${month}-${day}`;
+        }
+        
+        // Tenter de parser la date
+        const date = new Date(dateString);
+        if (!isNaN(date.getTime())) {
+          return date.toISOString().split('T')[0];
+        }
+        
+        return dateString;
+      } catch (err) {
+        console.error('Erreur lors du formatage de la date pour le stockage:', err);
+        return dateString;
+      }
+    }
+
+    const submitForm = async () => {
+      try {
+        // S'assurer que la date est au format attendu par le backend (ISO ou YYYY-MM-DD)
+        const storageDate = formatDateForStorage(todo.value.dueDate);
+        const displayDate = formatDateForDisplay(storageDate);
+        
+        // Vérifier que la date est valide
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(storageDate)) {
+          console.warn('Format de date non valide:', todo.value.dueDate);
+          // Continuer quand même, le backend peut gérer cela
+        }
+        
+        // Combiner heures et minutes
+        const todoData = { 
+          ...todo.value,
+          dueDate: displayDate,
+          dueTime: `${hours.value}:${minutes.value}`
+        };
+        
+        console.log('Envoi de la tâche avec date:', todoData.dueDate);
+        
+        const result = await store.dispatch('createTodo', todoData);
+        
+        if (result.success) {
+          // Afficher la notification appropriée
+          if (todoData.notificationsEnabled) {
+            notificationMessage.value = 'Tâche ajoutée et notification configurée avec succès!';
+          } else {
+            notificationMessage.value = 'Tâche ajoutée avec succès!';
+          }
+          
+          showNotification.value = true;
+          setTimeout(() => {
+            showNotification.value = false;
+          }, 3000);
+          
+          // Réinitialiser le formulaire
+          todo.value = {
+            title: '',
+            description: '',
+            dueDate: getTodayDate(),
+            category: 'autre',
+            priority: 'medium',
+            completed: false,
+            notificationsEnabled: false,
+            notificationEmail: ''
+          };
+          
+          hours.value = '12';
+          minutes.value = '00';
+        } else {
+          console.error('Erreur lors de l\'ajout de la tâche:', result.error);
+        }
+      } catch (error) {
+        console.error('Erreur dans le traitement du formulaire:', error);
       }
     }
 
@@ -217,7 +325,12 @@ export default {
       todo,
       hours,
       minutes,
-      submitForm
+      submitForm,
+      getTodayDate,
+      formatDateForDisplay,
+      formatDateForStorage,
+      notificationMessage,
+      showNotification
     }
   }
 }
@@ -478,5 +591,98 @@ export default {
 
 .notification-icon {
   font-style: normal;
+}
+
+.date-input-container {
+  position: relative;
+  margin-bottom: 0.5rem;
+}
+
+.date-format-info {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--gray);
+  margin-top: 0.25rem;
+  text-align: right;
+}
+
+.time-input {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.time-select {
+  flex: 1;
+  min-width: 0;
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236c757d' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 30px;
+  text-align: center;
+  font-family: monospace;
+  font-size: 1rem;
+}
+
+.time-separator {
+  font-weight: bold;
+  color: var(--dark);
+}
+
+/* Ajouter le nouveau style */
+.time-format-info {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--gray);
+  margin-top: 0.25rem;
+  text-align: right;
+}
+
+/* Notification styles */
+.notification {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  padding: 15px 20px;
+  background-color: var(--primary);
+  color: white;
+  border-radius: var(--border-radius);
+  box-shadow: var(--box-shadow);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  animation: slide-in 0.3s ease-out forwards;
+}
+
+.notification.success {
+  background-color: var(--success);
+}
+
+.notification-icon {
+  font-size: 1.2rem;
+}
+
+@keyframes slide-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-out {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
 }
 </style>
