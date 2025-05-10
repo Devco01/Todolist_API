@@ -6,17 +6,36 @@ const emailService = require('../services/emailService');
 
 // Endpoint pour vérifier manuellement les notifications
 // GET /api/notifications/force-check
+// Peut être protégé par un token via ?token=VOTRE_TOKEN
 router.get('/force-check', async (req, res) => {
   try {
+    // Vérification du token de sécurité (si configuré)
+    const configToken = process.env.NOTIFICATION_CHECK_TOKEN;
+    const requestToken = req.query.token;
+    
+    // Si un token est configuré dans les variables d'environnement, on vérifie
+    if (configToken && configToken.length > 0) {
+      if (!requestToken || requestToken !== configToken) {
+        return res.status(401).json({
+          success: false,
+          message: 'Token de sécurité invalide ou manquant'
+        });
+      }
+    }
+    
     console.log('Vérification manuelle des notifications déclenchée');
     
     // Exécuter la vérification des tâches à notifier
     await notificationService.checkTasksForNotification();
     
+    // Exécuter l'envoi des notifications en attente
+    const sendResult = await notificationService.sendPendingNotifications();
+    
     return res.status(200).json({
       success: true,
       message: 'Vérification des notifications lancée avec succès',
-      stats: notificationService.getNotificationStats()
+      result: sendResult,
+      timestamp: new Date().toISOString()
     });
   } catch (error) {
     console.error('Erreur lors de la vérification manuelle des notifications:', error);

@@ -73,14 +73,31 @@ app.get('/api/system-info', (req, res) => {
 // Cette route est appelée par le cron défini dans vercel.json
 app.get('/api/cron/check-notifications', async (req, res) => {
   try {
+    // Vérification du token de sécurité (si configuré)
+    // Pour les appels via Vercel Cron, ce token est facultatif
+    // mais peut être utile si vous appelez aussi cet endpoint manuellement
+    const configToken = process.env.NOTIFICATION_CHECK_TOKEN;
+    const requestToken = req.query.token;
+    
+    // Si utilisé en dehors de Vercel Cron et qu'un token est configuré
+    if (!process.env.VERCEL && configToken && configToken.length > 0) {
+      if (!requestToken || requestToken !== configToken) {
+        return res.status(401).json({
+          success: false,
+          message: 'Token de sécurité invalide ou manquant'
+        });
+      }
+    }
+    
     console.log('Cron API: Vérification des notifications déclenchée');
     await notificationService.checkTasksForNotification();
-    await notificationService.sendPendingNotifications();
+    const result = await notificationService.sendPendingNotifications();
     
     res.status(200).json({
       success: true,
       message: 'Vérification des notifications terminée avec succès',
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      result
     });
   } catch (error) {
     console.error('Erreur lors de la vérification des notifications via cron API:', error);
