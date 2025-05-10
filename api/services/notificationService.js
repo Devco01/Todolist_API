@@ -6,6 +6,7 @@ const { saveBackupTodos } = require('../config/db');
 let isRunning = false;
 let notificationQueue = [];
 let lastNotificationCheck = null;
+let debugMode = true; // Activer les logs détaillés
 
 // Initialiser le service de notification
 const initNotificationService = () => {
@@ -15,11 +16,11 @@ const initNotificationService = () => {
   }
 
   try {
-    // Planifier la vérification des tâches toutes les minutes (pour plus de précision)
-    // Format: '* * * * *' signifie "chaque minute"
-    cron.schedule('* * * * *', async () => {
+    // Planifier la vérification des tâches plus fréquemment (toutes les 30 secondes)
+    // Format: '*/30 * * * * *' signifie "toutes les 30 secondes"
+    cron.schedule('*/30 * * * * *', async () => {
       const now = new Date();
-      console.log(`Vérification des tâches à notifier... ${now.toISOString()}`);
+      console.log(`🔍 Vérification des tâches à notifier... ${now.toISOString()}`);
       lastNotificationCheck = now;
       
       await sendPendingNotifications();
@@ -27,13 +28,13 @@ const initNotificationService = () => {
     });
 
     isRunning = true;
-    console.log('Service de notification initialisé avec succès');
+    console.log('✅ Service de notification initialisé avec succès');
     
     // Exécuter immédiatement une première vérification
     setTimeout(async () => {
-      console.log('Première vérification des tâches à notifier...');
+      console.log('🚀 Première vérification des tâches à notifier...');
       await checkTasksForNotification();
-    }, 5000);
+    }, 3000);
   } catch (error) {
     console.error('Erreur lors de l\'initialisation du service de notification:', error);
   }
@@ -47,7 +48,7 @@ const checkTasksForNotification = async () => {
     try {
       isMongoConnected = Todo.db && Todo.db.readyState === 1;
     } catch (error) {
-      console.log('MongoDB non connecté, notification ignorée');
+      console.log('MongoDB non connecté, utilisation du stockage local');
       return;
     }
 
@@ -56,19 +57,24 @@ const checkTasksForNotification = async () => {
       return;
     }
 
-    // Récupérer toutes les tâches actives avec notifications activées mais pas encore envoyées
+    if (debugMode) {
+      console.log('Recherche de tâches avec notifications activées...');
+    }
+
+    // Récupérer toutes les tâches actives avec notifications activées
+    // Ne plus filtrer sur notificationSent=false pour permettre la vérification continue
     const todos = await Todo.find({
       completed: false,
       notificationsEnabled: true,
-      notificationSent: false
+      notificationEmail: { $exists: true, $ne: "" }
     });
 
     if (todos.length === 0) {
-      console.log('Aucune tâche avec notification activée');
+      if (debugMode) console.log('Aucune tâche avec notification activée');
       return;
     }
 
-    console.log(`Vérification de ${todos.length} tâches pour notifications...`);
+    console.log(`📋 Vérification de ${todos.length} tâches pour notifications...`);
     
     let tasksToNotify = 0;
 
@@ -84,14 +90,14 @@ const checkTasksForNotification = async () => {
     }
 
     if (tasksToNotify > 0) {
-      console.log(`${tasksToNotify} tâche(s) ajoutée(s) à la file d'attente de notification`);
+      console.log(`🔔 ${tasksToNotify} tâche(s) ajoutée(s) à la file d'attente de notification`);
       // Traiter immédiatement la file d'attente
       await sendPendingNotifications();
-    } else {
+    } else if (debugMode) {
       console.log('Aucune tâche à notifier pour le moment');
     }
   } catch (error) {
-    console.error('Erreur lors de la vérification des tâches à notifier:', error);
+    console.error('⚠️ Erreur lors de la vérification des tâches à notifier:', error);
   }
 };
 
@@ -101,7 +107,7 @@ const sendPendingNotifications = async () => {
     return;
   }
   
-  console.log(`Traitement de ${notificationQueue.length} notification(s) en attente...`);
+  console.log(`📤 Traitement de ${notificationQueue.length} notification(s) en attente...`);
   
   const promises = notificationQueue.map(async (todoId) => {
     try {
@@ -117,25 +123,39 @@ const sendPendingNotifications = async () => {
         return { id: todoId, success: false };
       }
       
-      // Vérifier si la notification doit être envoyée
-      if (!todo.notificationsEnabled || todo.notificationSent || todo.completed) {
-        console.log(`Tâche ${todoId} ne nécessite plus de notification`);
+      // Vérifier si la notification doit encore être envoyée
+      if (todo.completed) {
+        console.log(`Tâche ${todoId} terminée, pas besoin de notification`);
         return { id: todoId, success: false };
+      }
+      
+      // Si notification déjà envoyée, vérifier quand même si on est très proche de l'échéance
+      if (todo.notificationSent) {
+        // Vérifier si la tâche est à moins de 15 min de l'échéance
+        const dueDate = new Date(`${todo.dueDate}T${todo.dueTime || '00:00'}`);
+        const now = new Date();
+        const diffMinutes = Math.round((dueDate - now) / 60000);
+        
+        // Si pas dans la fenêtre d'urgence (<15min), ne pas renvoyer
+        if (diffMinutes > 15 || diffMinutes < 0) {
+          return { id: todoId, success: false };
+        }
+        
+        console.log(`⚠️ Rappel urgent pour "${todo.title}" - Échéance dans ${diffMinutes} minutes!`);
       }
       
       // Envoyer la notification
       const result = await emailService.sendTaskNotification(todo);
       
-      // Même si pas d'envoi direct, on considère la notification comme envoyée
       if (result.success) {
         // Mettre à jour la tâche pour indiquer que la notification a été envoyée
         todo.notificationSent = true;
         await todo.save();
         
-        console.log(`Notification traitée pour la tâche "${todo.title}"`);
+        console.log(`✅ Notification envoyée pour "${todo.title}" à ${todo.notificationEmail}`);
         return { id: todoId, success: true };
       } else {
-        console.error(`Échec d'envoi de notification pour ${todoId}: ${result.message}`);
+        console.error(`❌ Échec d'envoi de notification pour "${todo.title}": ${result.message}`);
         return { id: todoId, success: false };
       }
     } catch (error) {
@@ -153,28 +173,17 @@ const sendPendingNotifications = async () => {
   console.log(`${successIds.length} notification(s) traitée(s) avec succès, ${notificationQueue.length} notification(s) restante(s)`);
 };
 
-// Obtenir les statistiques du service de notification
+// Obtenir les statistiques de notification
 const getNotificationStats = () => {
   return {
     isRunning,
-    lastCheck: lastNotificationCheck,
-    pendingNotifications: notificationQueue.length
+    queueLength: notificationQueue.length,
+    lastCheck: lastNotificationCheck ? lastNotificationCheck.toISOString() : null
   };
-};
-
-// Fonction pour tester l'envoi d'une notification
-const testNotification = async (todoId, email) => {
-  try {
-    return await emailService.testNotification(todoId, email);
-  } catch (error) {
-    console.error('Erreur lors du test de notification:', error);
-    return { success: false, message: 'Erreur lors de l\'envoi de la notification de test' };
-  }
 };
 
 module.exports = {
   initNotificationService,
   checkTasksForNotification,
-  getNotificationStats,
-  testNotification
+  getNotificationStats
 }; 

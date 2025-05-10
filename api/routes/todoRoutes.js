@@ -353,73 +353,49 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// Ajouter une nouvelle route pour configurer les paramètres d'email
-router.post('/configure-email', async (req, res) => {
+// Ajouter une route pour les notifications
+router.put('/notifications/:id', async (req, res) => {
   try {
-    const { email, password, host, port } = req.body;
+    const todoId = req.params.id;
+    const { notificationsEnabled, notificationEmail } = req.body;
     
-    // Validation de base
-    if (!email || !password) {
-      return res.status(400).json({ 
+    // Récupérer la tâche existante
+    const todo = await Todo.findById(todoId);
+    
+    if (!todo) {
+      return res.status(404).json({ 
         success: false, 
-        message: 'Email et mot de passe sont requis' 
+        error: 'Tâche non trouvée' 
       });
     }
     
-    // Configurer le service d'email avec les informations fournies
-    const result = emailService.configureEmailSettings({
-      email,
-      password,
-      host,
-      port
-    });
+    // Valider l'email si les notifications sont activées
+    if (notificationsEnabled && (!notificationEmail || !notificationEmail.includes('@'))) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Un email valide est requis pour activer les notifications' 
+      });
+    }
     
-    if (result.success) {
-      res.status(200).json(result);
+    // Mettre à jour les paramètres de notification
+    todo.notificationsEnabled = notificationsEnabled;
+    
+    if (notificationsEnabled) {
+      todo.notificationEmail = notificationEmail;
+      todo.notificationSent = false; // Réinitialiser le statut d'envoi
     } else {
-      res.status(400).json(result);
-    }
-  } catch (error) {
-    console.error('Erreur lors de la configuration email:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Erreur lors de la configuration des paramètres d\'email',
-      details: error.message
-    });
-  }
-});
-
-// Ajouter une route pour tester l'email
-router.post('/test-email', async (req, res) => {
-  try {
-    const { email } = req.body;
-    
-    if (!email) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Email de test requis' 
-      });
+      todo.notificationEmail = undefined;
+      todo.notificationSent = undefined;
     }
     
-    // Créer une tâche factice pour tester l'envoi d'email
-    const testTodo = {
-      title: 'Test de notification email',
-      description: 'Ceci est un email de test pour vérifier votre configuration.',
-      dueDate: new Date().toISOString().split('T')[0],
-      dueTime: new Date().toTimeString().split(' ')[0].substring(0, 5),
-      category: 'autre',
-      priority: 'medium',
-      notificationEmail: email
-    };
+    await todo.save();
     
-    const result = await emailService.sendTaskNotification(testTodo);
-    
-    res.status(result.success ? 200 : 400).json(result);
+    res.status(200).json(todo);
   } catch (error) {
-    console.error('Erreur lors du test d\'email:', error);
+    console.error('Erreur lors de la mise à jour des notifications:', error);
     res.status(500).json({ 
       success: false, 
-      message: 'Erreur lors du test d\'email',
+      error: 'Erreur lors de la mise à jour des notifications',
       details: error.message
     });
   }

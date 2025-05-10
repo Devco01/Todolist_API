@@ -234,57 +234,6 @@ export default createStore({
         
         return { success: false, error: errorMessage };
       }
-    },
-    async configureEmailSettings({ commit }, emailConfig) {
-      commit('SET_ERROR', null);
-      commit('SET_NOTIFICATION_STATUS', null);
-      
-      try {
-        const { data } = await axios.post('/todos/configure-email', emailConfig);
-        
-        commit('SET_NOTIFICATION_STATUS', {
-          success: data.success,
-          message: data.message
-        });
-        
-        return data;
-      } catch (error) {
-        const errorMessage = error.response?.data?.message || 'Erreur lors de la configuration email';
-        
-        commit('SET_NOTIFICATION_STATUS', {
-          success: false,
-          message: errorMessage
-        });
-        
-        return { success: false, message: errorMessage };
-      }
-    },
-    
-    async testEmailConfig({ commit }, testEmail) {
-      commit('SET_ERROR', null);
-      commit('SET_NOTIFICATION_STATUS', null);
-      
-      try {
-        const { data } = await axios.post('/todos/test-email', { email: testEmail });
-        
-        commit('SET_NOTIFICATION_STATUS', {
-          success: data.success,
-          message: data.success 
-            ? `✅ Email de test envoyé avec succès à ${testEmail}` 
-            : data.message
-        });
-        
-        return data;
-      } catch (error) {
-        const errorMessage = error.response?.data?.message || 'Erreur lors de l\'envoi de l\'email de test';
-        
-        commit('SET_NOTIFICATION_STATUS', {
-          success: false,
-          message: errorMessage
-        });
-        
-        return { success: false, message: errorMessage };
-      }
     }
   }
 }) 
