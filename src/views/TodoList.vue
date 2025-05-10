@@ -20,6 +20,11 @@
           </svg>
           <span>Mode hors ligne</span>
         </div>
+        <div class="header-actions">
+          <button @click="showEmailConfigModal = true" class="config-email-btn">
+            ✉️ Configuration Email
+          </button>
+        </div>
       </div>
     </header>
     
@@ -256,6 +261,101 @@
         </div>
       </div>
     </div>
+    
+    <!-- Modal de configuration email -->
+    <div v-if="showEmailConfigModal" class="modal-overlay" @click="showEmailConfigModal = false">
+      <div class="modal-content email-config-modal" @click.stop>
+        <h2 class="modal-title">Configuration Email</h2>
+        <p class="modal-subtitle">Configurez votre serveur d'envoi d'emails pour les notifications</p>
+        
+        <form @submit.prevent="saveEmailConfig" class="email-config-form">
+          <div class="form-group">
+            <label for="config-email">Adresse Email</label>
+            <input 
+              id="config-email" 
+              v-model="emailConfig.email" 
+              type="email" 
+              class="form-control" 
+              placeholder="votre@email.com"
+              required
+            >
+          </div>
+          
+          <div class="form-group">
+            <label for="config-password">Mot de passe</label>
+            <input 
+              id="config-password" 
+              v-model="emailConfig.password" 
+              type="password" 
+              class="form-control" 
+              placeholder="Mot de passe ou mot de passe d'application"
+              required
+            >
+            <p class="helper-text">Pour Gmail, utilisez un mot de passe d'application.</p>
+          </div>
+          
+          <div class="form-row">
+            <div class="form-group">
+              <label for="config-host">Serveur SMTP</label>
+              <select id="config-host" v-model="emailConfig.host" class="form-control">
+                <option value="smtp.gmail.com">Gmail</option>
+                <option value="smtp-mail.outlook.com">Outlook</option>
+                <option value="smtp.mail.yahoo.com">Yahoo</option>
+                <option value="custom">Personnalisé</option>
+              </select>
+            </div>
+            
+            <div class="form-group" v-if="emailConfig.host === 'custom'">
+              <label for="config-custom-host">Serveur personnalisé</label>
+              <input 
+                id="config-custom-host" 
+                v-model="emailConfig.customHost" 
+                type="text" 
+                class="form-control" 
+                placeholder="smtp.votre-serveur.com"
+              >
+            </div>
+            
+            <div class="form-group">
+              <label for="config-port">Port</label>
+              <select id="config-port" v-model="emailConfig.port" class="form-control">
+                <option value="587">587 (TLS)</option>
+                <option value="465">465 (SSL)</option>
+                <option value="25">25</option>
+              </select>
+            </div>
+          </div>
+          
+          <div class="form-group">
+            <label for="test-email">Email de test</label>
+            <div class="input-group">
+              <input 
+                id="test-email" 
+                v-model="testEmailAddress" 
+                type="email" 
+                class="form-control" 
+                placeholder="email@pour-tester.com"
+              >
+              <button 
+                type="button" 
+                @click="sendTestEmail" 
+                class="test-email-btn" 
+                :disabled="!testEmailAddress || testingEmail"
+              >
+                {{ testingEmail ? 'Envoi...' : 'Tester' }}
+              </button>
+            </div>
+          </div>
+          
+          <div class="modal-actions">
+            <button type="button" @click="showEmailConfigModal = false" class="cancel-btn">Annuler</button>
+            <button type="submit" class="save-btn" :disabled="isSavingConfig">
+              {{ isSavingConfig ? 'Enregistrement...' : 'Enregistrer' }}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -286,6 +386,19 @@ export default {
     const editingTodo = ref({})
     const editHours = ref('12')
     const editMinutes = ref('00')
+    
+    // Configuration email
+    const showEmailConfigModal = ref(false)
+    const emailConfig = ref({
+      email: '',
+      password: '',
+      host: 'smtp.gmail.com',
+      customHost: '',
+      port: '587'
+    })
+    const testEmailAddress = ref('')
+    const testingEmail = ref(false)
+    const isSavingConfig = ref(false)
     
     // État du mode hors ligne
     const isOfflineMode = computed(() => store.state.isOfflineMode)
@@ -416,6 +529,48 @@ export default {
       }
     };
     
+    // Gestion de la configuration email
+    const saveEmailConfig = async () => {
+      isSavingConfig.value = true;
+      
+      try {
+        // Ajuster host si personnalisé
+        const finalConfig = {
+          ...emailConfig.value,
+          host: emailConfig.value.host === 'custom' ? emailConfig.value.customHost : emailConfig.value.host
+        };
+        
+        // Enlever customHost qui n'est pas nécessaire pour l'API
+        delete finalConfig.customHost;
+        
+        const result = await store.dispatch('configureEmailSettings', finalConfig);
+        
+        if (result.success) {
+          showEmailConfigModal.value = false;
+          // Effacer le mot de passe pour des raisons de sécurité
+          emailConfig.value.password = '';
+        }
+      } catch (error) {
+        console.error('Erreur lors de la configuration email:', error);
+      } finally {
+        isSavingConfig.value = false;
+      }
+    };
+    
+    const sendTestEmail = async () => {
+      if (!testEmailAddress.value) return;
+      
+      testingEmail.value = true;
+      
+      try {
+        await store.dispatch('testEmailConfig', testEmailAddress.value);
+      } catch (error) {
+        console.error('Erreur lors de l\'envoi de l\'email de test:', error);
+      } finally {
+        testingEmail.value = false;
+      }
+    };
+    
     // Cycle de vie
     onMounted(() => {
       fetchTodos();
@@ -444,7 +599,14 @@ export default {
       openEditModal,
       closeEditModal,
       updateTodo,
-      isOfflineMode
+      isOfflineMode,
+      showEmailConfigModal,
+      emailConfig,
+      testEmailAddress,
+      testingEmail,
+      isSavingConfig,
+      saveEmailConfig,
+      sendTestEmail
     };
   }
 };
@@ -777,5 +939,82 @@ export default {
   font-weight: 500;
   margin-top: 0.5rem;
   border: 1px solid #ff9800;
+}
+
+.header-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+
+.config-email-btn {
+  background-color: var(--primary-light);
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.config-email-btn:hover {
+  background-color: var(--primary);
+}
+
+.email-config-modal {
+  max-width: 500px;
+}
+
+.modal-subtitle {
+  color: var(--text-light);
+  margin-bottom: 1.5rem;
+}
+
+.form-row {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.form-row .form-group {
+  flex: 1;
+}
+
+.input-group {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.input-group .form-control {
+  flex: 1;
+}
+
+.test-email-btn {
+  background-color: var(--accent);
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.test-email-btn:hover:not(:disabled) {
+  background-color: var(--accent-dark);
+}
+
+.test-email-btn:disabled {
+  background-color: var(--gray);
+  cursor: not-allowed;
+}
+
+.helper-text {
+  font-size: 0.8rem;
+  color: var(--text-light);
+  margin-top: 0.25rem;
 }
 </style>
