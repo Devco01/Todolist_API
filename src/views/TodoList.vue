@@ -20,11 +20,6 @@
           </svg>
           <span>Mode hors ligne</span>
         </div>
-        <div class="header-actions">
-          <button @click="showEmailConfigModal = true" class="config-email-btn">
-            ✉️ Tester Notifications
-          </button>
-        </div>
       </div>
     </header>
     
@@ -261,47 +256,6 @@
         </div>
       </div>
     </div>
-    
-    <!-- Modal de configuration email -->
-    <div v-if="showEmailConfigModal" class="modal-overlay" @click="showEmailConfigModal = false">
-      <div class="modal-content email-config-modal" @click.stop>
-        <h2 class="modal-title">Notification par Email</h2>
-        <p class="modal-subtitle">Testez l'envoi de notifications</p>
-        
-        <form @submit.prevent="sendTestEmail" class="email-config-form">
-          <div class="form-group">
-            <label for="test-email">Votre adresse email</label>
-            <input 
-              id="test-email" 
-              v-model="testEmailAddress" 
-              type="email" 
-              class="form-control" 
-              placeholder="votre@email.com"
-              required
-            >
-            <p class="helper-text">Le système vous enverra une notification de test.</p>
-          </div>
-          
-          <div class="modal-actions">
-            <button type="button" @click="showEmailConfigModal = false" class="cancel-btn">Fermer</button>
-            <button type="submit" class="test-email-btn" :disabled="!testEmailAddress || testingEmail">
-              {{ testingEmail ? 'Envoi...' : 'Tester' }}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-    
-    <!-- Ajouter un composant flottant pour la notification de succès -->
-    <div v-if="showNotificationSuccess" class="notification-success">
-      <div class="notification-content">
-        <div class="success-icon">✅</div>
-        <div class="success-message">
-          <div>Email de test envoyé avec succès</div>
-          <div class="success-email">{{ testEmail }}</div>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -332,23 +286,6 @@ export default {
     const editingTodo = ref({})
     const editHours = ref('12')
     const editMinutes = ref('00')
-    
-    // Configuration email
-    const showEmailConfigModal = ref(false)
-    const emailConfig = ref({
-      email: '',
-      password: '',
-      host: 'smtp.gmail.com',
-      customHost: '',
-      port: '587'
-    })
-    const testEmailAddress = ref('')
-    const testingEmail = ref(false)
-    const isSavingConfig = ref(false)
-    
-    // Ajouter une variable d'état pour la confirmation de notification
-    const showNotificationSuccess = ref(false)
-    const testEmail = ref('')
     
     // État du mode hors ligne
     const isOfflineMode = computed(() => store.state.isOfflineMode)
@@ -479,56 +416,6 @@ export default {
       }
     };
     
-    // Gestion de la configuration email
-    const saveEmailConfig = async () => {
-      isSavingConfig.value = true;
-      
-      try {
-        // Ajuster host si personnalisé
-        const finalConfig = {
-          ...emailConfig.value,
-          host: emailConfig.value.host === 'custom' ? emailConfig.value.customHost : emailConfig.value.host
-        };
-        
-        // Enlever customHost qui n'est pas nécessaire pour l'API
-        delete finalConfig.customHost;
-        
-        const result = await store.dispatch('configureEmailSettings', finalConfig);
-        
-        if (result.success) {
-          showEmailConfigModal.value = false;
-          // Effacer le mot de passe pour des raisons de sécurité
-          emailConfig.value.password = '';
-        }
-      } catch (error) {
-        console.error('Erreur lors de la configuration email:', error);
-      } finally {
-        isSavingConfig.value = false;
-      }
-    };
-    
-    const sendTestEmail = async () => {
-      if (!testEmailAddress.value) return;
-      
-      testingEmail.value = true;
-      
-      try {
-        const result = await store.dispatch('testEmailConfig', testEmailAddress.value);
-        if (result.success) {
-          // Fermer la modal
-          showEmailConfigModal.value = false;
-          
-          // Nous n'affichons plus de notification locale ici
-          // car elle est déjà affichée par le système de notification global
-          // via le store Vuex
-        }
-      } catch (error) {
-        console.error('Erreur lors de l\'envoi de l\'email de test:', error);
-      } finally {
-        testingEmail.value = false;
-      }
-    };
-    
     // Cycle de vie
     onMounted(() => {
       fetchTodos();
@@ -557,16 +444,7 @@ export default {
       openEditModal,
       closeEditModal,
       updateTodo,
-      isOfflineMode,
-      showEmailConfigModal,
-      emailConfig,
-      testEmailAddress,
-      testingEmail,
-      isSavingConfig,
-      saveEmailConfig,
-      sendTestEmail,
-      showNotificationSuccess,
-      testEmail
+      isOfflineMode
     };
   }
 };
@@ -899,127 +777,5 @@ export default {
   font-weight: 500;
   margin-top: 0.5rem;
   border: 1px solid #ff9800;
-}
-
-.header-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 1rem;
-}
-
-.config-email-btn {
-  background-color: var(--primary-light);
-  color: white;
-  border: none;
-  padding: 0.5rem 1rem;
-  border-radius: var(--border-radius);
-  cursor: pointer;
-  font-weight: 500;
-  transition: background-color 0.2s;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.config-email-btn:hover {
-  background-color: var(--primary);
-}
-
-.email-config-modal {
-  max-width: 500px;
-}
-
-.modal-subtitle {
-  color: var(--text-light);
-  margin-bottom: 1.5rem;
-}
-
-.form-row {
-  display: flex;
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-
-.form-row .form-group {
-  flex: 1;
-}
-
-.input-group {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.input-group .form-control {
-  flex: 1;
-}
-
-.test-email-btn {
-  background-color: var(--accent);
-  color: white;
-  border: none;
-  padding: 0.5rem 1rem;
-  border-radius: var(--border-radius);
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.test-email-btn:hover:not(:disabled) {
-  background-color: var(--accent-dark);
-}
-
-.test-email-btn:disabled {
-  background-color: var(--gray);
-  cursor: not-allowed;
-}
-
-.helper-text {
-  font-size: 0.8rem;
-  color: var(--text-light);
-  margin-top: 0.25rem;
-}
-
-/* Ajouter les styles pour la notification de succès */
-.notification-success {
-  position: fixed;
-  bottom: 30px;
-  right: 30px;
-  background-color: var(--success);
-  color: white;
-  border-radius: var(--border-radius);
-  padding: 1rem;
-  z-index: 1000;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-  animation: slide-in-right 0.3s ease forwards;
-}
-
-.notification-content {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.success-icon {
-  font-size: 1.5rem;
-}
-
-.success-message {
-  font-weight: 500;
-}
-
-.success-email {
-  font-size: 0.85rem;
-  opacity: 0.9;
-  margin-top: 0.25rem;
-}
-
-@keyframes slide-in-right {
-  0% {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  100% {
-    transform: translateX(0);
-    opacity: 1;
-  }
 }
 </style>

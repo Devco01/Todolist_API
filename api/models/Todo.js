@@ -70,35 +70,48 @@ todoSchema.methods.shouldNotify = function() {
     console.log(`Vérification de notification pour: ${this.title}`);
     console.log(`Date d'échéance: ${this.dueDate}, Heure: ${this.dueTime || '00:00'}`);
     
-    // Conversion de la date
-    let year, month, day;
+    // Méthode simplifiée pour créer une date d'échéance valide
+    let dueDateTime;
     
-    // Gérer les deux formats possibles de date
-    if (this.dueDate.includes('-')) {
-      // Format YYYY-MM-DD
-      [year, month, day] = this.dueDate.split('-');
-    } else if (this.dueDate.includes('/')) {
-      // Format DD/MM/YYYY
-      [day, month, year] = this.dueDate.split('/');
-    } else {
-      console.error('Format de date non reconnu:', this.dueDate);
-      return false;
+    try {
+      // Utiliser directement le format ISO pour plus de fiabilité
+      dueDateTime = new Date(`${this.dueDate}T${this.dueTime || '00:00'}`);
+    } catch (e) {
+      console.error('Erreur lors de la création de la date d\'échéance:', e);
+      
+      // Tentative alternative de création de la date
+      try {
+        // Format YYYY-MM-DD
+        if (this.dueDate.includes('-')) {
+          const [year, month, day] = this.dueDate.split('-');
+          const [hours, minutes] = (this.dueTime || '00:00').split(':');
+          dueDateTime = new Date(
+            parseInt(year), 
+            parseInt(month) - 1, 
+            parseInt(day), 
+            parseInt(hours), 
+            parseInt(minutes)
+          );
+        } 
+        // Format DD/MM/YYYY
+        else if (this.dueDate.includes('/')) {
+          const [day, month, year] = this.dueDate.split('/');
+          const [hours, minutes] = (this.dueTime || '00:00').split(':');
+          dueDateTime = new Date(
+            parseInt(year), 
+            parseInt(month) - 1, 
+            parseInt(day), 
+            parseInt(hours), 
+            parseInt(minutes)
+          );
+        } else {
+          return false;
+        }
+      } catch (e2) {
+        console.error('Seconde erreur lors de la création de la date d\'échéance:', e2);
+        return false;
+      }
     }
-    
-    // Extraction de l'heure et des minutes
-    let hours = 0, minutes = 0;
-    if (this.dueTime && this.dueTime.includes(':')) {
-      [hours, minutes] = this.dueTime.split(':');
-    }
-    
-    // Création de la date d'échéance
-    const dueDateTime = new Date(
-      parseInt(year), 
-      parseInt(month) - 1, 
-      parseInt(day), 
-      parseInt(hours), 
-      parseInt(minutes)
-    );
     
     // Vérifier si la date est valide
     if (isNaN(dueDateTime.getTime())) {
@@ -118,14 +131,27 @@ todoSchema.methods.shouldNotify = function() {
     
     console.log(`Différence: ${diffMinutes} minutes`);
     
-    // Notification si le délai est entre 0 et 1 heure (60 minutes)
-    const result = diff > 0 && diff <= 3600000;
+    // Notification si le délai est entre 55 et 65 minutes avant l'échéance
+    // Cette fenêtre plus large permet de s'assurer que la notification est envoyée
+    const minutesToNotify = 60; // 1 heure avant l'échéance
+    const tolerance = 5; // 5 minutes de tolérance
     
-    if (result) {
-      console.log(`Notification déclenchée pour la tâche "${this.title}" (échéance dans ${diffMinutes} minutes)`);
+    const withinNotificationWindow = 
+      diffMinutes >= (minutesToNotify - tolerance) && 
+      diffMinutes <= (minutesToNotify + tolerance);
+    
+    if (withinNotificationWindow) {
+      console.log(`🔔 Notification déclenchée pour la tâche "${this.title}" (échéance dans ${diffMinutes} minutes)`);
+      return true;
     }
     
-    return result;
+    // Si la tâche est à moins de 60 minutes de l'échéance, mais la notification n'a pas été envoyée
+    if (diff > 0 && diff <= 3600000 && !this.notificationSent) {
+      console.log(`⚠️ La tâche "${this.title}" échoit bientôt (${diffMinutes} min) et n'a pas été notifiée. Envoi immédiat.`);
+      return true;
+    }
+    
+    return false;
   } catch (error) {
     console.error('Erreur lors de la vérification de notification:', error);
     return false;

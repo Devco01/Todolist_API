@@ -2,54 +2,43 @@ const nodemailer = require('nodemailer');
 
 // Configuration du transporteur email
 let transporter;
-let isTestMode = false;
 
 // Configurer un transporteur Gmail
 const initializeGmailTransporter = () => {
-  transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      user: 'todolist.app.notif@gmail.com', // Remplacez par votre adresse Gmail dédiée
-      pass: 'ezvb kmbi axhb knud'           // Mot de passe d'application généré depuis la sécurité du compte Google
-    }
-  });
-  
-  console.log('Transporteur Gmail configuré avec succès');
-  isTestMode = false;
-  return transporter;
-};
-
-// Configurer les paramètres d'email
-const configureEmailSettings = (config) => {
   try {
-    if (!config || !config.email || !config.password) {
-      return { 
-        success: false, 
-        message: 'Configuration incomplète: email et mot de passe requis' 
-      };
-    }
-    
-    // Créer un nouveau transporteur avec les paramètres fournis
     transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
-        user: config.email,
-        pass: config.password
+        user: 'todolist.app.notif@gmail.com', // Adresse Gmail dédiée
+        pass: 'ezvb kmbi axhb knud'          // Mot de passe d'application
+      },
+      tls: {
+        rejectUnauthorized: false
       }
     });
     
-    isTestMode = false;
+    console.log('Transporteur Gmail configuré avec succès');
     
-    return {
-      success: true,
-      message: 'Configuration email enregistrée avec succès'
-    };
+    // Vérifier que la connexion fonctionne
+    transporter.verify((error, success) => {
+      if (error) {
+        console.error('Erreur de vérification du transporteur SMTP:', error.message);
+      } else {
+        console.log('Connexion SMTP vérifiée avec succès');
+      }
+    });
+    
+    return transporter;
   } catch (error) {
-    console.error('Erreur lors de la configuration email:', error);
-    return {
-      success: false,
-      message: `Erreur: ${error.message}`
-    };
+    console.error('Erreur lors de l\'initialisation du transporteur Gmail:', error);
+    
+    // En cas d'échec, créer un transporteur de secours
+    transporter = nodemailer.createTransport({
+      jsonTransport: true // Ne fait rien, mais au moins l'application continue
+    });
+    
+    console.log('Transporteur de secours configuré');
+    return transporter;
   }
 };
 
@@ -66,7 +55,7 @@ const sendTaskNotification = async (todo) => {
   try {
     // S'assurer que le transporteur est initialisé
     if (!transporter) {
-      initializeGmailTransporter();
+      await initializeGmailTransporter();
     }
     
     // Formater la date pour l'affichage
@@ -86,23 +75,32 @@ const sendTaskNotification = async (todo) => {
     // Formater l'heure pour l'affichage
     const formattedTime = todo.dueTime || '00:00';
     
+    // Déterminer si c'est un rappel urgent
+    const dueDate = new Date(`${todo.dueDate}T${todo.dueTime || '00:00'}`);
+    const now = new Date();
+    const diffMinutes = Math.round((dueDate - now) / 60000);
+    const isUrgent = diffMinutes <= 15;
+    
     // Définir les options d'email
     const mailOptions = {
       from: '"TodoList App" <todolist.app.notif@gmail.com>',
       to: todo.notificationEmail,
-      subject: `Rappel: "${todo.title}" est prévu dans moins d'une heure`,
+      subject: isUrgent ? 
+        `🚨 URGENT: "${todo.title}" est prévu dans moins de ${diffMinutes} minutes!` :
+        `⏰ Rappel: "${todo.title}" est prévu dans 1 heure`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 5px;">
           <h2 style="color: #4a7c59;">Rappel de tâche</h2>
           <p>Bonjour,</p>
-          <p>Nous vous rappelons que la tâche suivante est prévue dans moins d'une heure :</p>
-          <div style="background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin: 15px 0; border-left: 4px solid #4a7c59;">
+          <p>Nous vous rappelons que la tâche suivante ${isUrgent ? '<span style="color: red; font-weight: bold;">est imminente</span>' : 'est prévue bientôt'} :</p>
+          <div style="background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin: 15px 0; border-left: 4px solid ${isUrgent ? '#bc4749' : '#4a7c59'};">
             <h3 style="margin-top: 0; color: #333;">${todo.title}</h3>
             ${todo.description ? `<p style="color: #666;">${todo.description}</p>` : ''}
             <p><strong>Date :</strong> ${formattedDate}</p>
             <p><strong>Heure :</strong> ${formattedTime}</p>
             <p><strong>Catégorie :</strong> ${todo.category || 'Non catégorisé'}</p>
             <p><strong>Priorité :</strong> <span style="color: ${getPriorityColor(todo.priority)};">${getPriorityLabel(todo.priority)}</span></p>
+            ${isUrgent ? `<p style="color: red; font-weight: bold;">⚠️ Cette tâche est prévue dans ${diffMinutes} minutes!</p>` : ''}
           </div>
           <p>Vous recevez cet email car vous avez activé les notifications pour cette tâche.</p>
           <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;">
@@ -133,30 +131,6 @@ const sendTaskNotification = async (todo) => {
   }
 };
 
-// Tester les notifications
-const testNotification = async (todoId, email) => {
-  try {
-    // Créer une tâche factice pour tester
-    const testTodo = {
-      title: 'Test de notification email',
-      description: 'Ceci est un email de test pour vérifier les notifications.',
-      dueDate: new Date().toISOString().split('T')[0],
-      dueTime: new Date().toTimeString().split(' ')[0].substring(0, 5),
-      category: 'autre',
-      priority: 'medium',
-      notificationEmail: email
-    };
-    
-    // Envoyer l'email de test
-    const result = await sendTaskNotification(testTodo);
-    
-    return result;
-  } catch (error) {
-    console.error('Erreur lors du test de notification:', error);
-    return { success: false, message: `Erreur: ${error.message}` };
-  }
-};
-
 // Fonctions utilitaires
 const getPriorityColor = (priority) => {
   switch (priority) {
@@ -175,7 +149,5 @@ const getPriorityLabel = (priority) => {
 };
 
 module.exports = {
-  sendTaskNotification,
-  testNotification,
-  configureEmailSettings
+  sendTaskNotification
 }; 

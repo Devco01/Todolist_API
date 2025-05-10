@@ -87,27 +87,4 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// Envoyer une notification de test
-router.post('/test/:id', async (req, res) => {
-  try {
-    const id = req.params.id;
-    
-    // Validation de l'ID pour MongoDB
-    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
-      return res.status(400).json({ error: 'ID de tâche invalide' });
-    }
-    
-    // Extraire l'email de test de la requête
-    const { testEmail } = req.body;
-    
-    // Envoyer la notification de test
-    const result = await emailService.testNotification(id, testEmail);
-    
-    res.status(result.success ? 200 : 400).json(result);
-  } catch (error) {
-    console.error('Error sending test notification:', error);
-    res.status(500).json({ error: 'Erreur lors de l\'envoi de la notification de test' });
-  }
-});
-
 module.exports = router; 
