@@ -267,15 +267,17 @@ export default createStore({
       try {
         const { data } = await axios.post('/todos/test-email', { email: testEmail });
         
-        // Ne plus ouvrir automatiquement le client email
+        // Ne plus ouvrir la prévisualisation dans une nouvelle fenêtre
         commit('SET_NOTIFICATION_STATUS', {
           success: data.success,
-          message: data.success ? 'Notification de test envoyée avec succès' : data.message
+          message: data.success 
+            ? `✅ Email de test envoyé avec succès à ${testEmail}` 
+            : data.message
         });
         
         return data;
       } catch (error) {
-        const errorMessage = error.response?.data?.message || 'Erreur lors de la préparation de l\'email de test';
+        const errorMessage = error.response?.data?.message || 'Erreur lors de l\'envoi de l\'email de test';
         
         commit('SET_NOTIFICATION_STATUS', {
           success: false,

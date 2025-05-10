@@ -291,6 +291,17 @@
         </form>
       </div>
     </div>
+    
+    <!-- Ajouter un composant flottant pour la notification de succès -->
+    <div v-if="showNotificationSuccess" class="notification-success">
+      <div class="notification-content">
+        <div class="success-icon">✅</div>
+        <div class="success-message">
+          <div>Email de test envoyé avec succès</div>
+          <div class="success-email">{{ testEmail }}</div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -334,6 +345,10 @@ export default {
     const testEmailAddress = ref('')
     const testingEmail = ref(false)
     const isSavingConfig = ref(false)
+    
+    // Ajouter une variable d'état pour la confirmation de notification
+    const showNotificationSuccess = ref(false)
+    const testEmail = ref('')
     
     // État du mode hors ligne
     const isOfflineMode = computed(() => store.state.isOfflineMode)
@@ -498,7 +513,19 @@ export default {
       testingEmail.value = true;
       
       try {
-        await store.dispatch('testEmailConfig', testEmailAddress.value);
+        const result = await store.dispatch('testEmailConfig', testEmailAddress.value);
+        if (result.success) {
+          // Stocker l'email pour l'affichage
+          testEmail.value = testEmailAddress.value;
+          // Afficher la notification visuelle
+          showNotificationSuccess.value = true;
+          // Masquer automatiquement après 3 secondes
+          setTimeout(() => {
+            showNotificationSuccess.value = false;
+          }, 3000);
+          // Fermer la modal
+          showEmailConfigModal.value = false;
+        }
       } catch (error) {
         console.error('Erreur lors de l\'envoi de l\'email de test:', error);
       } finally {
@@ -541,7 +568,9 @@ export default {
       testingEmail,
       isSavingConfig,
       saveEmailConfig,
-      sendTestEmail
+      sendTestEmail,
+      showNotificationSuccess,
+      testEmail
     };
   }
 };
@@ -951,5 +980,50 @@ export default {
   font-size: 0.8rem;
   color: var(--text-light);
   margin-top: 0.25rem;
+}
+
+/* Ajouter les styles pour la notification de succès */
+.notification-success {
+  position: fixed;
+  bottom: 30px;
+  right: 30px;
+  background-color: var(--success);
+  color: white;
+  border-radius: var(--border-radius);
+  padding: 1rem;
+  z-index: 1000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  animation: slide-in-right 0.3s ease forwards;
+}
+
+.notification-content {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.success-icon {
+  font-size: 1.5rem;
+}
+
+.success-message {
+  font-weight: 500;
+}
+
+.success-email {
+  font-size: 0.85rem;
+  opacity: 0.9;
+  margin-top: 0.25rem;
+}
+
+@keyframes slide-in-right {
+  0% {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 </style>
