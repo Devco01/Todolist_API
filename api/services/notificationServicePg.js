@@ -146,21 +146,27 @@ const sendPendingNotifications = async () => {
             `.replace(/              /g, '').trim()
           };
 
-          // Envoyer l'email
-          const emailResult = await emailService.sendEmail(emailData);
+          // Envoyer l'email via la fonction sendTaskNotification pour bénéficier de la mise en forme avancée
+          const emailResult = await emailService.sendTaskNotification(todo);
           
-          // Marquer la notification comme envoyée
-          await todoPgService.markNotificationSent(todo.id);
-          
-          console.log(`Notification envoyée pour "${todo.title}" à ${todo.notificationEmail}`);
-          
-          results.sent++;
-          results.details.push({
-            todoId: todo.id,
-            title: todo.title,
-            email: todo.notificationEmail,
-            status: 'success'
-          });
+          // Marquer la notification comme envoyée seulement si l'envoi a réussi
+          if (emailResult.success) {
+            await todoPgService.markNotificationSent(todo.id);
+            
+            console.log(`Notification envoyée pour "${todo.title}" à ${todo.notificationEmail}`);
+            
+            results.sent++;
+            results.details.push({
+              todoId: todo.id,
+              title: todo.title,
+              email: todo.notificationEmail,
+              status: 'success',
+              messageId: emailResult.messageId || '',
+              previewUrl: emailResult.previewUrl || ''
+            });
+          } else {
+            throw new Error(emailResult.message || 'Échec de l\'envoi de l\'email');
+          }
         }
       } catch (err) {
         console.error(`Erreur lors de l'envoi de la notification pour la tâche ${todo.id}:`, err);
@@ -255,51 +261,38 @@ const testSmtpConnection = async (targetEmail) => {
       throw new Error('Adresse email invalide');
     }
     
-    // Créer un email de test basique
-    const emailData = {
-      to: targetEmail,
-      subject: `[TEST SMTP] TodoList - Test de connexion au serveur d'email`,
-      text: `
-        Bonjour,
-        
-        Ceci est un email de test pour vérifier la configuration du service d'email de votre application TodoList.
-        
-        Si vous recevez cet email, cela signifie que votre service d'email est correctement configuré.
-        
-        Date et heure du test: ${new Date().toLocaleString('fr-FR')}
-        
-        Cordialement,
-        Votre application TodoList
-      `.replace(/        /g, '').trim(),
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 5px;">
-          <h2 style="color: #4a7c59;">Test de configuration SMTP</h2>
-          <p>Bonjour,</p>
-          <p>Ceci est un email de test pour vérifier la configuration du service d'email de votre application TodoList.</p>
-          <p><strong>Si vous recevez cet email, cela signifie que votre service d'email est correctement configuré.</strong></p>
-          <p>Date et heure du test: ${new Date().toLocaleString('fr-FR')}</p>
-          <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;">
-          <p style="font-size: 0.9rem; color: #666;">Cordialement,<br>Votre application TodoList</p>
-        </div>
-      `.replace(/        /g, '').trim()
-    };
+    console.log(`Envoi d'un email de test à ${targetEmail}...`);
     
-    // Envoyer l'email de test - utiliser directement la fonction sendMail
-    const result = await emailService.sendTaskNotification({
-      title: 'Test SMTP',
-      description: 'Email de test pour vérifier la configuration',
+    // Créer une tâche fictive pour le test
+    const testTodo = {
+      title: 'Test de connexion SMTP',
+      description: 'Ceci est un email de test pour vérifier la configuration de votre service de notification',
       dueDate: new Date().toISOString().split('T')[0],
-      dueTime: new Date().toTimeString().split(' ')[0].substr(0, 5),
+      dueTime: new Date().toTimeString().split(' ')[0].substring(0, 5),
       notificationEmail: targetEmail,
       notificationsEnabled: true,
       priority: 'medium',
       category: 'autre'
-    });
+    };
     
-    console.log(`Email de test SMTP envoyé à ${targetEmail}`, result);
+    // Essayer de réinitialiser le transporteur avant le test
+    await emailService.initializeEmailTransporter();
+    
+    // Envoyer l'email de test
+    console.log('Envoi du test avec la tâche fictive:', JSON.stringify(testTodo, null, 2));
+    const result = await emailService.sendTaskNotification(testTodo);
+    
+    console.log('Résultat de l\'envoi de test:', JSON.stringify(result, null, 2));
+    
+    if (result.previewUrl) {
+      console.log('==============================================');
+      console.log('PRÉVISUALISATION DE L\'EMAIL DISPONIBLE:');
+      console.log(result.previewUrl);
+      console.log('==============================================');
+    }
     
     return {
-      success: true,
+      success: result.success,
       message: `Email de test envoyé à ${targetEmail}`,
       details: result
     };

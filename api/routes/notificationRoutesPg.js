@@ -141,32 +141,61 @@ router.get('/check', async (req, res) => {
   }
 });
 
-// Tester la connexion SMTP (sans nécessiter une tâche existante)
-router.post('/test-smtp', async (req, res) => {
+/**
+ * @route   GET /api/notifications/test-smtp
+ * @desc    Tester la connexion SMTP
+ * @access  Public
+ */
+router.get('/test-smtp', async (req, res) => {
   try {
-    const { email } = req.body;
+    const { email } = req.query;
     
     if (!email || !email.includes('@')) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Une adresse email valide est requise' 
+      return res.status(400).json({
+        success: false,
+        message: 'Paramètre email requis (ex: /test-smtp?email=votre@email.com)'
       });
     }
     
-    // Envoyer un email de test SMTP
+    // Réinitialiser le transporteur d'email pour utiliser les dernières configurations
+    const emailService = require('../services/emailService');
+    await emailService.initializeEmailTransporter();
+    
+    // Afficher les infos de configuration utilisées
+    console.log('Test SMTP avec la configuration:');
+    console.log('- SMTP_HOST:', process.env.SMTP_HOST || 'Non définie');
+    console.log('- SMTP_PORT:', process.env.SMTP_PORT || 'Non défini');
+    console.log('- SMTP_USER:', process.env.SMTP_USER ? 'Défini' : 'Non défini');
+    console.log('- EMAIL_FROM:', process.env.EMAIL_FROM || 'Non définie');
+    
+    // Tester l'envoi d'email
     const result = await notificationService.testSmtpConnection(email);
     
-    res.status(200).json({
-      success: true,
-      message: `Email de test envoyé à ${email}`,
-      details: result
-    });
+    // Ajouter des informations sur la configuration au résultat
+    result.configInfo = {
+      smtpHost: process.env.SMTP_HOST || 'Non configuré (utilisation du mode test)',
+      smtpPort: process.env.SMTP_PORT || 'Non configuré',
+      emailFrom: process.env.EMAIL_FROM || 'Non configuré'
+    };
+    
+    // Si c'est Ethereal, ajouter un message sur la façon de configurer SMTP
+    if (!process.env.SMTP_HOST) {
+      result.setupInfo = {
+        message: 'Vous utilisez le mode test Ethereal. Pour configurer un vrai service SMTP:',
+        steps: [
+          'Exécutez node scripts/setup-smtp.js depuis la racine du projet',
+          'Ou configurez manuellement les variables d\'environnement: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_SECURE, EMAIL_FROM'
+        ]
+      };
+    }
+    
+    res.status(200).json(result);
   } catch (error) {
     console.error('Erreur lors du test SMTP:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: 'Erreur lors de l\'envoi de l\'email de test',
-      details: error.message
+    res.status(500).json({
+      success: false,
+      message: `Erreur lors du test SMTP: ${error.message}`,
+      error: error.message
     });
   }
 });
@@ -287,11 +316,7 @@ router.get('/test-ui', (req, res) => {
       document.getElementById('testEmail').addEventListener('click', async function() {
         const email = document.getElementById('email').value;
         try {
-          const response = await fetch('/api/notifications/test-smtp', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email })
-          });
+          const response = await fetch('/api/notifications/test-smtp?email=' + encodeURIComponent(email));
           const data = await response.json();
           updateResult('emailResult', data);
         } catch (error) {
@@ -305,6 +330,45 @@ router.get('/test-ui', (req, res) => {
   
   res.setHeader('Content-Type', 'text/html');
   res.send(html);
+});
+
+// Route pour diagnostiquer la configuration email
+router.get('/email-diagnostics', (req, res) => {
+  // Masquer les informations sensibles
+  const maskString = (str) => {
+    if (!str) return 'non défini';
+    if (str.length <= 4) return '****';
+    return str.substring(0, 2) + '*'.repeat(str.length - 4) + str.substring(str.length - 2);
+  };
+
+  const diagnostics = {
+    environment: {
+      NODE_ENV: process.env.NODE_ENV || 'non défini',
+      VERCEL: process.env.VERCEL === '1' ? 'oui' : 'non'
+    },
+    sendgrid: {
+      SENDGRID_API_KEY: process.env.SENDGRID_API_KEY ? maskString(process.env.SENDGRID_API_KEY) : 'non défini',
+      EMAIL_FROM: process.env.EMAIL_FROM || 'non défini'
+    },
+    smtp: {
+      SMTP_HOST: process.env.SMTP_HOST || 'non défini',
+      SMTP_PORT: process.env.SMTP_PORT || 'non défini',
+      SMTP_USER: process.env.SMTP_USER ? maskString(process.env.SMTP_USER) : 'non défini',
+      SMTP_PASS: process.env.SMTP_PASS ? '******' : 'non défini',
+      SMTP_SECURE: process.env.SMTP_SECURE === 'true' ? 'oui' : 'non'
+    },
+    config: {
+      isProduction: process.env.NODE_ENV === 'production',
+      checkFrequency: process.env.NODE_ENV === 'production' ? '* * * * *' : '*/15 * * * * *'
+    },
+    timestamp: new Date().toISOString()
+  };
+
+  res.json({
+    success: true,
+    message: 'Diagnostics de configuration email',
+    diagnostics
+  });
 });
 
 module.exports = router; 

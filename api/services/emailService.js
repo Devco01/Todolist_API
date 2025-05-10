@@ -7,36 +7,42 @@ let transporter;
 // Initialiser le transporteur d'email en fonction de l'environnement
 const initializeEmailTransporter = async () => {
   try {
-    // Vérifier si on est en production (déploiement)
-    if (config.isProduction) {
-      // Vérifier si on a une API key SendGrid (service gratuit pour 100 emails/jour)
-      if (config.email.sendgrid.apiKey) {
-        // Utiliser SendGrid pour la production
-        transporter = nodemailer.createTransport({
-          service: 'SendGrid',
-          auth: {
-            user: 'apikey',
-            pass: config.email.sendgrid.apiKey
-          }
-        });
-        
-        console.log('Service de messagerie SendGrid configuré pour la production');
-      } else {
-        // Si pas de clé SendGrid, utiliser un transporteur plus générique avec des variables d'environnement
-        transporter = nodemailer.createTransport({
-          host: config.email.smtp.host,
-          port: config.email.smtp.port,
-          secure: config.email.smtp.secure,
-          auth: {
-            user: config.email.smtp.auth.user || 'kaelyn.boyle@ethereal.email',
-            pass: config.email.smtp.auth.pass || 'kCrQxkBvhsYsGdxSgA'
-          }
-        });
-        
-        console.log('Service de messagerie SMTP configuré avec les variables d\'environnement');
+    // Vérifier si les variables d'environnement SMTP sont configurées
+    if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+      console.log('Configuration du transporteur SMTP avec les variables d\'environnement...');
+      
+      // Créer un transporteur SMTP réel
+      transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: process.env.SMTP_PORT || 587,
+        secure: process.env.SMTP_SECURE === 'true',
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS
+        },
+        debug: process.env.NODE_ENV !== 'production',
+        logger: process.env.NODE_ENV !== 'production'
+      });
+      
+      console.log('Transporteur SMTP configuré avec succès:');
+      console.log(`- Host: ${process.env.SMTP_HOST}`);
+      console.log(`- Port: ${process.env.SMTP_PORT || 587}`);
+      console.log(`- User: ${process.env.SMTP_USER}`);
+      
+      // Vérifier la connexion SMTP
+      try {
+        await transporter.verify();
+        console.log('Connexion SMTP vérifiée avec succès');
+      } catch (verifyError) {
+        console.error('Erreur lors de la vérification SMTP:', verifyError.message);
+        throw new Error(`Échec de la vérification SMTP: ${verifyError.message}`);
       }
+      
+      return transporter;
     } else {
-      // Pour le développement, utiliser Ethereal (service de test)
+      console.log('Variables SMTP non configurées, utilisation d\'Ethereal comme solution de repli...');
+      
+      // Créer un compte de test Ethereal
       const testAccount = await nodemailer.createTestAccount();
       
       transporter = nodemailer.createTransport({
@@ -47,46 +53,45 @@ const initializeEmailTransporter = async () => {
           user: testAccount.user,
           pass: testAccount.pass
         },
-        debug: true
+        debug: true,
+        logger: true // Activer le logger pour plus de détails
       });
       
-      console.log('Service de messagerie Ethereal configuré pour le développement');
-      console.log('Identifiants Ethereal:', testAccount.user);
+      console.log('==========================================');
+      console.log('INFORMATIONS DU COMPTE ETHEREAL (MODE TEST):');
+      console.log('------------------------------------------');
+      console.log(`EMAIL: ${testAccount.user}`);
+      console.log(`MOT DE PASSE: ${testAccount.pass}`);
+      console.log(`HOST: ${testAccount.smtp.host}`);
+      console.log(`PORT: ${testAccount.smtp.port}`);
+      console.log('------------------------------------------');
+      console.log('POUR VOIR LES EMAILS:');
+      console.log('1. Allez sur https://ethereal.email/login');
+      console.log(`2. Connectez-vous avec: ${testAccount.user}`);
+      console.log(`3. Et le mot de passe: ${testAccount.pass}`);
+      console.log('------------------------------------------');
+      console.log('POUR CONFIGURER UN VRAI SERVICE SMTP:');
+      console.log('1. Ajoutez les variables d\'environnement suivantes:');
+      console.log('   - SMTP_HOST (ex: smtp.gmail.com)');
+      console.log('   - SMTP_PORT (ex: 587)');
+      console.log('   - SMTP_USER (votre adresse email)');
+      console.log('   - SMTP_PASS (votre mot de passe ou mot de passe d\'application)');
+      console.log('   - SMTP_SECURE (true ou false)');
+      console.log('   - EMAIL_FROM (adresse d\'expéditeur)');
+      console.log('==========================================');
+      
+      return transporter;
     }
-    
-    // Vérifier que la connexion fonctionne
-    const verifyResult = await transporter.verify();
-    console.log('Vérification de la connexion SMTP:', verifyResult);
-    
-    return transporter;
   } catch (error) {
-    console.error('Erreur lors de l\'initialisation du transporteur d\'email:', error);
+    console.error('Erreur lors de l\'initialisation du transporteur email:', error);
     
-    // En cas d'échec, essayer un transporteur encore plus simple
-    try {
-      // Transporteur de secours avec Ethereal
-      transporter = nodemailer.createTransport({
-        host: 'smtp.ethereal.email',
-        port: 587,
-        auth: {
-          user: 'kaelyn.boyle@ethereal.email',
-          pass: 'kCrQxkBvhsYsGdxSgA'
-        }
-      });
-      
-      console.log('Transporteur de secours configuré avec des identifiants prédéfinis');
-      return transporter;
-    } catch (error2) {
-      console.error('Erreur avec le transporteur de secours:', error2);
-      
-      // Dernier recours - transporteur JSON qui stocke les emails sans les envoyer
-      transporter = nodemailer.createTransport({
-        jsonTransport: true
-      });
-      
-      console.log('Transporteur JSON (mode simulé) configuré - les emails seront stockés mais non envoyés');
-      return transporter;
-    }
+    // Mode de secours - simuler l'envoi
+    transporter = nodemailer.createTransport({
+      jsonTransport: true
+    });
+    
+    console.log('Mode simulation d\'envoi activé - les emails ne seront pas envoyés');
+    return transporter;
   }
 };
 
@@ -97,31 +102,13 @@ initializeEmailTransporter();
 const refreshTransporter = async () => {
   console.log('Rafraîchissement du transporteur d\'email...');
   
-  // En cas d'échec avec SendGrid, utiliser une solution alternative
   try {
-    // Essayer d'abord avec un service de test Ethereal
-    const testAccount = await nodemailer.createTestAccount();
-    
-    transporter = nodemailer.createTransport({
-      host: testAccount.smtp.host,
-      port: testAccount.smtp.port,
-      secure: testAccount.smtp.secure,
-      auth: {
-        user: testAccount.user,
-        pass: testAccount.pass
-      },
-      debug: true
-    });
-    
-    console.log('Transporteur de secours configuré avec Ethereal:');
-    console.log(`- User: ${testAccount.user}`);
-    console.log(`- Preview URL: https://ethereal.email/login (utiliser les identifiants ci-dessus)`);
-    
-    return transporter;
+    // Essayer d'abord avec la configuration SMTP principale
+    return await initializeEmailTransporter();
   } catch (error) {
-    console.error('Erreur avec tous les transporteurs d\'email:', error.message);
+    console.error('Erreur lors du rafraîchissement du transporteur:', error.message);
     
-    // Dernier recours - simuler l'envoi sans réellement envoyer
+    // Dernier recours - transporteur JSON qui stocke les emails sans les envoyer
     transporter = nodemailer.createTransport({
       jsonTransport: true
     });
@@ -143,6 +130,13 @@ const sendTaskNotification = async (todo) => {
     if (!transporter) {
       await initializeEmailTransporter();
     }
+    
+    // Afficher la configuration actuelle pour le débug
+    console.log('Configuration email actuelle:');
+    console.log('- SMTP_HOST:', process.env.SMTP_HOST || 'Non définie');
+    console.log('- SMTP_USER:', process.env.SMTP_USER ? 'Défini' : 'Non défini');
+    console.log('- EMAIL_FROM:', process.env.EMAIL_FROM || 'Non définie');
+    console.log('- Transporteur actif:', transporter ? (transporter.options ? transporter.options.host || 'jsonTransport' : 'inconnu') : 'aucun');
     
     // Formater la date pour l'affichage
     let formattedDate = todo.dueDate;
@@ -177,8 +171,8 @@ const sendTaskNotification = async (todo) => {
       timeMessage = `demain`;
     }
     
-    // Adresse d'expédition par défaut - utiliser noreply pour éviter les problèmes de vérification
-    const fromAddress = config.email.sendgrid.from || 'noreply@todolistapp.example.com';
+    // Adresse d'expédition par défaut - utiliser EMAIL_FROM s'il est défini
+    const fromAddress = process.env.EMAIL_FROM || 'noreply@todolist.example.com';
     
     // Définir les options d'email
     const mailOptions = {
@@ -234,37 +228,40 @@ const sendTaskNotification = async (todo) => {
     
     let info = null;
     try {
+      console.log('Tentative d\'envoi avec le transporteur principal...');
       info = await transporter.sendMail(mailOptions);
+      console.log('Résultat de l\'envoi:', JSON.stringify(info, null, 2));
     } catch (sendError) {
-      // Si SendGrid échoue, essayer avec le transporteur de secours
       console.error('Échec avec le transporteur principal:', sendError.message);
       console.log('Tentative avec le transporteur de secours...');
       
       // Rafraîchir le transporteur et réessayer
       await refreshTransporter();
       info = await transporter.sendMail(mailOptions);
+      console.log('Résultat de l\'envoi avec transporteur de secours:', JSON.stringify(info, null, 2));
     }
     
-    console.log(`Email envoyé: ${info.messageId}`);
+    console.log(`Email envoyé: ${info.messageId || 'Pas d\'ID de message'}`);
     
     // Obtenir l'URL de prévisualisation (fonctionne uniquement avec Ethereal)
     let previewUrl = '';
     try {
       if (info.messageId && info.messageId.includes('ethereal')) {
         previewUrl = nodemailer.getTestMessageUrl(info);
-        if (previewUrl) {
-          console.log(`Prévisualisation de l'email: ${previewUrl}`);
-        }
+        console.log(`Prévisualisation de l'email: ${previewUrl || 'Non disponible'}`);
+      } else {
+        console.log('Prévisualisation non disponible pour ce transporteur');
       }
     } catch (error) {
-      // Ignorer l'erreur, prévisualisation non disponible
+      console.error('Erreur lors de la récupération de l\'URL de prévisualisation:', error.message);
     }
     
     return { 
       success: true, 
       message: `Email envoyé à ${todo.notificationEmail}`,
-      messageId: info.messageId,
-      previewUrl
+      messageId: info.messageId || '',
+      previewUrl: previewUrl || '',
+      details: info.response || ''
     };
   } catch (error) {
     console.error(`Erreur lors de l'envoi de l'email:`, error.message);
@@ -290,7 +287,93 @@ const getPriorityLabel = (priority) => {
   }
 };
 
+// Exposer une fonction pour envoyer un email générique
+const sendEmail = async (emailData) => {
+  if (!emailData || !emailData.to) {
+    return { success: false, message: 'Données d\'email incomplètes' };
+  }
+  
+  try {
+    // S'assurer que le transporteur est initialisé
+    if (!transporter) {
+      await initializeEmailTransporter();
+    }
+    
+    // Adresse d'expédition
+    const fromAddress = process.env.EMAIL_FROM || 'noreply@todolist.example.com';
+    
+    // Compléter les options manquantes
+    const mailOptions = {
+      from: emailData.from || `"TodoList App" <${fromAddress}>`,
+      to: emailData.to,
+      subject: emailData.subject || 'Message de TodoList App',
+      text: emailData.text || 'Ce message n\'a pas de contenu texte.',
+      html: emailData.html || '<p>Ce message n\'a pas de contenu HTML.</p>'
+    };
+    
+    // Envoyer l'email
+    console.log(`Envoi d'un email à ${emailData.to}...`);
+    const info = await transporter.sendMail(mailOptions);
+    
+    // Obtenir l'URL de prévisualisation (fonctionne uniquement avec Ethereal)
+    let previewUrl = '';
+    if (info.messageId && info.messageId.includes('ethereal')) {
+      previewUrl = nodemailer.getTestMessageUrl(info);
+      console.log(`Prévisualisation de l'email: ${previewUrl}`);
+    }
+    
+    return { 
+      success: true, 
+      message: `Email envoyé à ${emailData.to}`,
+      messageId: info.messageId || '',
+      previewUrl: previewUrl || '',
+      details: info.response || ''
+    };
+  } catch (error) {
+    console.error(`Erreur lors de l'envoi de l'email:`, error);
+    
+    // Tenter avec le transporteur de secours
+    try {
+      console.log('Tentative avec le transporteur de secours...');
+      await refreshTransporter();
+      
+      // Adresse d'expédition
+      const fromAddress = process.env.EMAIL_FROM || 'noreply@todolist.example.com';
+      
+      // Compléter les options manquantes
+      const mailOptions = {
+        from: emailData.from || `"TodoList App" <${fromAddress}>`,
+        to: emailData.to,
+        subject: emailData.subject || 'Message de TodoList App',
+        text: emailData.text || 'Ce message n\'a pas de contenu texte.',
+        html: emailData.html || '<p>Ce message n\'a pas de contenu HTML.</p>'
+      };
+      
+      const info = await transporter.sendMail(mailOptions);
+      
+      // Obtenir l'URL de prévisualisation (fonctionne uniquement avec Ethereal)
+      let previewUrl = '';
+      if (info.messageId && info.messageId.includes('ethereal')) {
+        previewUrl = nodemailer.getTestMessageUrl(info);
+      }
+      
+      return { 
+        success: true, 
+        message: `Email envoyé à ${emailData.to} (transporteur de secours)`,
+        messageId: info.messageId || '',
+        previewUrl: previewUrl || '',
+        details: info.response || ''
+      };
+    } catch (secondError) {
+      console.error(`Échec de l'envoi avec le transporteur de secours:`, secondError);
+      return { success: false, message: `Erreur d'envoi: ${error.message}` };
+    }
+  }
+};
+
 module.exports = {
   sendTaskNotification,
-  refreshTransporter
+  refreshTransporter,
+  sendEmail,
+  initializeEmailTransporter
 }; 
