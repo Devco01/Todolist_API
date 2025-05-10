@@ -133,28 +133,38 @@ const sendTaskNotification = async (todo) => {
     const dueDate = new Date(`${todo.dueDate}T${todo.dueTime || '00:00'}`);
     const now = new Date();
     const diffMinutes = Math.round((dueDate - now) / 60000);
-    const isUrgent = diffMinutes <= config.notifications.urgentReminderMinutes;
+    const diffHours = Math.round(diffMinutes / 60);
+    
+    // Formater le message selon le temps restant
+    let timeMessage = '';
+    if (diffMinutes < 60) {
+      timeMessage = `dans moins d'une heure (${diffMinutes} minutes)`;
+    } else if (diffHours < 24) {
+      timeMessage = `dans ${diffHours} heure${diffHours > 1 ? 's' : ''}`;
+    } else {
+      timeMessage = `demain`;
+    }
     
     // Définir les options d'email
     const mailOptions = {
       from: config.email.sendgrid.from || '"TodoList App" <todolist@notification.com>',
       to: todo.notificationEmail,
-      subject: isUrgent ? 
-        `🚨 URGENT: "${todo.title}" est prévu dans moins de ${diffMinutes} minutes!` :
-        `⏰ Rappel: "${todo.title}" est prévu dans 1 heure`,
+      subject: diffMinutes <= 60 ? 
+        `🚨 URGENT: "${todo.title}" est prévu ${timeMessage}!` :
+        `⏰ Rappel: "${todo.title}" est prévu ${timeMessage}`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 5px;">
           <h2 style="color: #4a7c59;">Rappel de tâche</h2>
           <p>Bonjour,</p>
-          <p>Nous vous rappelons que la tâche suivante ${isUrgent ? '<span style="color: red; font-weight: bold;">est imminente</span>' : 'est prévue bientôt'} :</p>
-          <div style="background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin: 15px 0; border-left: 4px solid ${isUrgent ? '#bc4749' : '#4a7c59'};">
+          <p>Nous vous rappelons que la tâche suivante ${diffMinutes <= 60 ? '<span style="color: red; font-weight: bold;">est imminente</span>' : 'est prévue'} :</p>
+          <div style="background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin: 15px 0; border-left: 4px solid ${diffMinutes <= 60 ? '#bc4749' : '#4a7c59'};">
             <h3 style="margin-top: 0; color: #333;">${todo.title}</h3>
             ${todo.description ? `<p style="color: #666;">${todo.description}</p>` : ''}
             <p><strong>Date :</strong> ${formattedDate}</p>
             <p><strong>Heure :</strong> ${formattedTime}</p>
             <p><strong>Catégorie :</strong> ${todo.category || 'Non catégorisé'}</p>
             <p><strong>Priorité :</strong> <span style="color: ${getPriorityColor(todo.priority)};">${getPriorityLabel(todo.priority)}</span></p>
-            ${isUrgent ? `<p style="color: red; font-weight: bold;">⚠️ Cette tâche est prévue dans ${diffMinutes} minutes!</p>` : ''}
+            <p><strong>Échéance :</strong> <span style="font-weight: bold; ${diffMinutes <= 60 ? 'color: red;' : ''}">${timeMessage}</span></p>
           </div>
           <p>Vous recevez cet email car vous avez activé les notifications pour cette tâche.</p>
           <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;">
