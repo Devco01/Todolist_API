@@ -183,11 +183,11 @@ const getTodosWithPendingNotifications = async () => {
       const TodoModel = getTodoModel();
       
       // Trouver tous les todos non complétés avec notifications activées
+      // Même si notificationSent=true, on inclut les tâches pour vérification
       const todos = await TodoModel.findAll({
         where: {
           notificationsEnabled: true,
           completed: false,
-          notificationSent: false,
           dueDate: { [Op.not]: null }
         }
       });
@@ -198,7 +198,6 @@ const getTodosWithPendingNotifications = async () => {
       return inMemoryTodos.filter(todo => 
         todo.notificationsEnabled && 
         !todo.completed && 
-        !todo.notificationSent && 
         todo.dueDate);
     }
   } catch (error) {

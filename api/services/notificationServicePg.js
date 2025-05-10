@@ -66,7 +66,7 @@ const stopNotificationService = () => {
  */
 const checkTasksForNotification = async () => {
   try {
-    console.log('Vérification des tâches pour les notifications...');
+    console.log('Vérification des tâches pour les notifications (échéance dans les prochaines 24h)...');
 
     // Récupérer toutes les tâches avec notifications activées
     const todos = await todoPgService.getTodosWithPendingNotifications();
@@ -80,7 +80,7 @@ const checkTasksForNotification = async () => {
         // Si la tâche doit être notifiée, la marquer pour notification
         if (todo.shouldNotify && todo.shouldNotify()) {
           countReadyForNotification++;
-          console.log(`Tâche "${todo.title}" prête pour notification`);
+          console.log(`Tâche "${todo.title}" prête pour notification (date: ${todo.dueDate}, heure: ${todo.dueTime || '00:00'})`);
         }
       } catch (err) {
         console.error(`Erreur lors de la vérification de la tâche ${todo.id}:`, err);

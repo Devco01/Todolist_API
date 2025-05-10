@@ -122,16 +122,15 @@ const defineTodoModel = () => {
       
       // Si la notification a déjà été envoyée
       if (this.notificationSent) {
-        // Envoyer un rappel urgent uniquement si on est très proche de l'échéance
-        return diffMinutes > 0 && diffMinutes <= 15; // 15 minutes avant comme rappel urgent
+        // Ne pas renvoyer de notification, car avec le cron quotidien ce n'est pas utile
+        return false;
       }
       
-      // Notification principale - autour d'une heure avant
-      const withinNotificationWindow = 
-        diffMinutes >= 53 && // 1h - 7min
-        diffMinutes <= 67;   // 1h + 7min
+      // Notification pour les 24 prochaines heures (cron quotidien à minuit)
+      // Cette approche permet d'envoyer des notifications pour toutes les tâches du jour
+      const isWithin24Hours = diffMinutes > 0 && diffMinutes <= 24 * 60; // 24 heures en minutes
       
-      return withinNotificationWindow || (diff > 0 && diffMinutes < 60 && !this.notificationSent);
+      return isWithin24Hours && !this.notificationSent;
     } catch (error) {
       console.error('Erreur lors de la vérification de notification:', error);
       return false;
