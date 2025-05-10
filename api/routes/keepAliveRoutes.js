@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { checkConnection } = require('../config/db');
+const { getSequelize } = require('../config/postgres');
 const os = require('os');
 
 // Endpoint pour le service de monitoring (comme UptimeRobot)
@@ -10,7 +10,13 @@ router.get('/', (req, res) => {
     // Récupérer des informations de base sur le système
     const uptime = process.uptime();
     const memoryUsage = process.memoryUsage();
-    const dbStatus = checkConnection();
+    
+    // Vérifier l'état de la connexion PostgreSQL
+    const sequelize = getSequelize();
+    const dbStatus = {
+      isConnected: sequelize ? true : false,
+      state: sequelize ? 'connected' : 'disconnected'
+    };
     
     // Formatage du temps écoulé
     const formatUptime = (seconds) => {
