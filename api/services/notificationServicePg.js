@@ -284,15 +284,19 @@ const testSmtpConnection = async (targetEmail) => {
       `.replace(/        /g, '').trim()
     };
     
-    // Envoyer l'email de test
+    // Envoyer l'email de test - utiliser directement la fonction sendMail
     const result = await emailService.sendTaskNotification({
       title: 'Test SMTP',
+      description: 'Email de test pour vérifier la configuration',
       dueDate: new Date().toISOString().split('T')[0],
       dueTime: new Date().toTimeString().split(' ')[0].substr(0, 5),
-      notificationEmail: targetEmail
+      notificationEmail: targetEmail,
+      notificationsEnabled: true,
+      priority: 'medium',
+      category: 'autre'
     });
     
-    console.log(`Email de test SMTP envoyé à ${targetEmail}`);
+    console.log(`Email de test SMTP envoyé à ${targetEmail}`, result);
     
     return {
       success: true,
@@ -305,11 +309,19 @@ const testSmtpConnection = async (targetEmail) => {
   }
 };
 
+/**
+ * Vérifier si le service de notification est actif
+ */
+const isServiceActive = () => {
+  return notificationServiceActive;
+};
+
 module.exports = {
   initNotificationService,
   stopNotificationService,
   checkTasksForNotification,
   sendPendingNotifications,
   sendTestNotification,
-  testSmtpConnection
+  testSmtpConnection,
+  isServiceActive
 }; 
