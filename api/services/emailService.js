@@ -1,14 +1,44 @@
 const nodemailer = require('nodemailer');
 
-// Créer un transporteur SMTP pour les tests avec Mailtrap
-let transporter = nodemailer.createTransport({
-  host: "sandbox.smtp.mailtrap.io",
-  port: 2525,
-  auth: {
-    user: "fbfa40d56cdaad",
-    pass: "4d87b3cc7f3aa1"
+// Créer un transporteur de test avec Ethereal Email
+let transporter;
+
+// Initialiser le transporteur de test
+const initializeTestTransporter = async () => {
+  if (transporter) return transporter;
+  
+  try {
+    // Créer un compte de test Ethereal
+    const testAccount = await nodemailer.createTestAccount();
+    
+    // Créer un transporteur réutilisable avec Ethereal
+    transporter = nodemailer.createTransport({
+      host: 'smtp.ethereal.email',
+      port: 587,
+      secure: false,
+      auth: {
+        user: testAccount.user,
+        pass: testAccount.pass
+      }
+    });
+    
+    console.log('Transporteur de test Ethereal créé avec succès');
+    return transporter;
+  } catch (error) {
+    console.error('Erreur lors de la création du transporteur de test:', error);
+    
+    // En cas d'échec, utiliser un transporteur "preview" qui ne fait rien
+    transporter = nodemailer.createTransport({
+      jsonTransport: true
+    });
+    
+    console.log('Transporteur de prévisualisation configuré (fallback)');
+    return transporter;
   }
-});
+};
+
+// Initialiser immédiatement
+initializeTestTransporter();
 
 // Envoyer un email de notification pour une tâche
 const sendTaskNotification = async (todo) => {
@@ -18,6 +48,11 @@ const sendTaskNotification = async (todo) => {
   }
   
   try {
+    // S'assurer que le transporteur est initialisé
+    if (!transporter) {
+      await initializeTestTransporter();
+    }
+    
     // Formater la date pour l'affichage
     let formattedDate = todo.dueDate;
     
@@ -70,12 +105,18 @@ const sendTaskNotification = async (todo) => {
     const info = await transporter.sendMail(mailOptions);
     
     console.log(`Email envoyé: ${info.messageId}`);
-    console.log(`Prévisualisation: ${nodemailer.getTestMessageUrl(info)}`);
+    
+    let previewUrl = '';
+    if (info.messageId) {
+      // Pour Ethereal Email
+      previewUrl = nodemailer.getTestMessageUrl(info);
+      console.log(`Prévisualisation: ${previewUrl}`);
+    }
     
     return { 
       success: true, 
       message: `Email envoyé à ${todo.notificationEmail}`,
-      previewUrl: nodemailer.getTestMessageUrl(info)
+      previewUrl
     };
   } catch (error) {
     console.error(`Erreur lors de l'envoi de l'email:`, error.message);
