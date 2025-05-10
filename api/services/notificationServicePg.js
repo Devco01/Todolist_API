@@ -112,76 +112,189 @@ const sendPendingNotifications = async () => {
       details: []
     };
 
-    for (const todo of todos) {
+    // Filtrer les tâches qui doivent être notifiées
+    const todosToNotify = todos.filter(todo => todo.shouldNotify && todo.shouldNotify());
+    
+    if (todosToNotify.length === 0) {
+      console.log('Aucune tâche à notifier aujourd\'hui');
+      return {
+        total: 0,
+        sent: 0,
+        errors: 0,
+        details: []
+      };
+    }
+    
+    console.log(`${todosToNotify.length} tâches à notifier aujourd'hui`);
+    
+    // Regrouper les tâches par adresse email
+    const todosByEmail = {};
+    
+    todosToNotify.forEach(todo => {
+      if (!todo.notificationEmail) return;
+      
+      if (!todosByEmail[todo.notificationEmail]) {
+        todosByEmail[todo.notificationEmail] = [];
+      }
+      
+      todosByEmail[todo.notificationEmail].push(todo);
+    });
+    
+    // Envoyer un email par adresse avec toutes les tâches regroupées
+    for (const [email, emailTodos] of Object.entries(todosByEmail)) {
       try {
-        if (todo.shouldNotify && todo.shouldNotify()) {
-          // Construire le contenu de l'email
-          const emailData = {
-            to: todo.notificationEmail,
-            subject: `Rappel: "${todo.title}" - Tâche à effectuer bientôt`,
-            text: `
-              Bonjour,
-              
-              Ceci est un rappel pour votre tâche "${todo.title}" qui doit être effectuée le ${todo.dueDate} à ${todo.dueTime || '00:00'}.
-              
-              Description: ${todo.description || 'Aucune description'}
-              Catégorie: ${todo.category || 'Non spécifiée'}
-              Priorité: ${todo.priority || 'Moyenne'}
-              
-              Cordialement,
-              Votre application TodoList
-            `.replace(/              /g, '').trim(),
-            html: `
-              <h2>Rappel : Tâche à effectuer bientôt</h2>
-              <h3>${todo.title}</h3>
-              <p>Date d'échéance : <strong>${todo.dueDate}</strong> à <strong>${todo.dueTime || '00:00'}</strong></p>
-              
-              <h4>Détails :</h4>
-              <p><strong>Description :</strong> ${todo.description || 'Aucune description'}</p>
-              <p><strong>Catégorie :</strong> ${todo.category || 'Non spécifiée'}</p>
-              <p><strong>Priorité :</strong> ${todo.priority || 'Moyenne'}</p>
-              
-              <hr>
-              <p style="color: #666; font-size: 0.8em;">Ce message a été envoyé automatiquement par votre application TodoList</p>
-            `.replace(/              /g, '').trim()
-          };
-
-          // Envoyer l'email via la fonction sendTaskNotification pour bénéficier de la mise en forme avancée
-          const emailResult = await emailService.sendTaskNotification(todo);
+        // Nombre de tâches pour cette adresse
+        const todoCount = emailTodos.length;
+        
+        // Trier les tâches par date puis heure
+        emailTodos.sort((a, b) => {
+          // D'abord par date
+          if (a.dueDate < b.dueDate) return -1;
+          if (a.dueDate > b.dueDate) return 1;
           
-          // Marquer la notification comme envoyée seulement si l'envoi a réussi
-          if (emailResult.success) {
-            await todoPgService.markNotificationSent(todo.id);
-            
-            console.log(`Notification envoyée pour "${todo.title}" à ${todo.notificationEmail}`);
-            
-            results.sent++;
-            results.details.push({
-              todoId: todo.id,
-              title: todo.title,
-              email: todo.notificationEmail,
-              status: 'success',
-              messageId: emailResult.messageId || '',
-              previewUrl: emailResult.previewUrl || ''
+          // Si même date, trier par heure
+          const aTime = a.dueTime || '00:00';
+          const bTime = b.dueTime || '00:00';
+          return aTime.localeCompare(bTime);
+        });
+        
+        // Titre de l'email
+        const subject = todoCount === 1 
+          ? `📅 Rappel : "${emailTodos[0].title}" aujourd'hui`
+          : `📅 Rappel : ${todoCount} tâches prévues aujourd'hui`;
+        
+        // Construire le tableau HTML des tâches
+        let tasksTableHtml = `
+          <table style="width: 100%; border-collapse: collapse; margin-top: 20px; margin-bottom: 20px;">
+            <thead>
+              <tr style="background-color: #f9f9f9;">
+                <th style="padding: 10px; text-align: left; border-bottom: 2px solid #ddd;">Tâche</th>
+                <th style="padding: 10px; text-align: left; border-bottom: 2px solid #ddd;">Heure</th>
+                <th style="padding: 10px; text-align: left; border-bottom: 2px solid #ddd;">Priorité</th>
+                <th style="padding: 10px; text-align: left; border-bottom: 2px solid #ddd;">Catégorie</th>
+              </tr>
+            </thead>
+            <tbody>
+        `;
+        
+        // Liste des tâches en format texte
+        let tasksTextList = '';
+        
+        // Générer chaque ligne du tableau
+        emailTodos.forEach((todo, index) => {
+          const priorityColor = todo.priority === 'high' ? '#bc4749' : (todo.priority === 'medium' ? '#d9a557' : '#588157');
+          const priorityLabel = todo.priority === 'high' ? 'Haute' : (todo.priority === 'medium' ? 'Moyenne' : 'Basse');
+          
+          // Formater l'heure pour l'affichage
+          const formattedTime = todo.dueTime || '00:00';
+          
+          // Formater la date si nécessaire
+          let formattedDate = todo.dueDate;
+          if (todo.dueDate && todo.dueDate.includes('-')) {
+            const [year, month, day] = todo.dueDate.split('-');
+            const date = new Date(year, month - 1, day);
+            formattedDate = date.toLocaleDateString('fr-FR', {
+              day: 'numeric',
+              month: 'long',
+              year: 'numeric'
             });
-          } else {
-            throw new Error(emailResult.message || 'Échec de l\'envoi de l\'email');
           }
+          
+          tasksTableHtml += `
+            <tr style="background-color: ${index % 2 === 0 ? '#ffffff' : '#f9f9f9'}; border-bottom: 1px solid #ddd;">
+              <td style="padding: 10px;">
+                <strong>${todo.title}</strong>
+                ${todo.description ? `<br><span style="color: #666; font-size: 0.9em;">${todo.description}</span>` : ''}
+              </td>
+              <td style="padding: 10px;">${formattedTime}</td>
+              <td style="padding: 10px;"><span style="color: ${priorityColor};">${priorityLabel}</span></td>
+              <td style="padding: 10px;">${todo.category || 'Non spécifiée'}</td>
+            </tr>
+          `;
+          
+          // Ajouter à la liste texte
+          tasksTextList += `
+- ${todo.title} à ${formattedTime}
+  Priorité: ${priorityLabel}
+  Catégorie: ${todo.category || 'Non spécifiée'}
+  ${todo.description ? `Description: ${todo.description}` : ''}
+`;
+        });
+        
+        tasksTableHtml += `
+            </tbody>
+          </table>
+        `;
+        
+        // Construire le contenu de l'email
+        const emailData = {
+          to: email,
+          subject: subject,
+          text: `
+Bonjour,
+
+Voici un rappel pour vos tâches prévues aujourd'hui (${new Date().toLocaleDateString('fr-FR')}) :
+
+${tasksTextList}
+
+Cordialement,
+Votre application TodoList
+          `.trim(),
+          html: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 5px;">
+  <h2 style="color: #4a7c59;">Rappel de tâches pour aujourd'hui</h2>
+  <p>Bonjour,</p>
+  <p>Voici un résumé de vos tâches prévues pour aujourd'hui (${new Date().toLocaleDateString('fr-FR')}) :</p>
+  
+  ${tasksTableHtml}
+  
+  <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;">
+  <p style="font-size: 0.9rem; color: #666;">
+    Cordialement,<br>
+    Votre application TodoList<br>
+    <em>Ne répondez pas à cet email, il a été envoyé automatiquement.</em>
+  </p>
+</div>
+          `.trim()
+        };
+
+        // Envoyer l'email
+        const emailService = require('./emailService');
+        const emailResult = await emailService.sendEmail(emailData);
+        
+        if (emailResult.success) {
+          // Marquer toutes les tâches comme notifiées
+          for (const todo of emailTodos) {
+            await todoPgService.markNotificationSent(todo.id);
+          }
+          
+          console.log(`Notification groupée envoyée pour ${todoCount} tâches à ${email}`);
+          
+          results.sent++;
+          results.details.push({
+            email: email,
+            todoCount: todoCount,
+            todos: emailTodos.map(t => ({ id: t.id, title: t.title })),
+            status: 'success',
+            messageId: emailResult.messageId || '',
+            previewUrl: emailResult.previewUrl || ''
+          });
+        } else {
+          throw new Error(emailResult.message || 'Échec de l\'envoi de l\'email');
         }
       } catch (err) {
-        console.error(`Erreur lors de l'envoi de la notification pour la tâche ${todo.id}:`, err);
+        console.error(`Erreur lors de l'envoi de la notification groupée à ${email}:`, err);
         results.errors++;
         results.details.push({
-          todoId: todo.id,
-          title: todo.title,
-          email: todo.notificationEmail,
+          email: email,
+          todoCount: todosByEmail[email].length,
           status: 'error',
           message: err.message
         });
       }
     }
 
-    console.log(`Résultat de l'envoi des notifications: ${results.sent} envoyées, ${results.errors} erreurs`);
+    console.log(`Résultat de l'envoi des notifications: ${results.sent} emails envoyés, ${results.errors} erreurs`);
     return results;
   } catch (error) {
     console.error('Erreur lors de l\'envoi des notifications:', error);

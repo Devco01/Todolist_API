@@ -111,30 +111,33 @@ const defineTodoModel = () => {
       
       const now = new Date();
       
-      // Calculer la différence en millisecondes et minutes
-      const diff = dueDateTime.getTime() - now.getTime();
-      const diffMinutes = Math.round(diff/60000);
+      // Déterminer si la tâche est prévue pour aujourd'hui
+      const isToday = this.isDateToday(dueDateTime);
       
-      // Si la tâche est déjà passée, pas besoin de notification
-      if (diffMinutes < 0) {
+      // Ne pas notifier les tâches passées
+      if (dueDateTime < now) {
         return false;
       }
       
       // Si la notification a déjà été envoyée
       if (this.notificationSent) {
-        // Ne pas renvoyer de notification, car avec le cron quotidien ce n'est pas utile
         return false;
       }
       
-      // Notification pour les 24 prochaines heures (cron quotidien à minuit)
-      // Cette approche permet d'envoyer des notifications pour toutes les tâches du jour
-      const isWithin24Hours = diffMinutes > 0 && diffMinutes <= 24 * 60; // 24 heures en minutes
-      
-      return isWithin24Hours && !this.notificationSent;
+      // Notification uniquement pour les tâches d'aujourd'hui
+      return isToday;
     } catch (error) {
       console.error('Erreur lors de la vérification de notification:', error);
       return false;
     }
+  };
+  
+  // Méthode pour vérifier si une date est aujourd'hui
+  Todo.prototype.isDateToday = function(date) {
+    const today = new Date();
+    return date.getDate() === today.getDate() &&
+           date.getMonth() === today.getMonth() &&
+           date.getFullYear() === today.getFullYear();
   };
   
   return Todo;
