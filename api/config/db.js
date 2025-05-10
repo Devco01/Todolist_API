@@ -11,15 +11,44 @@ const LOCAL_DB_BACKUP_PATH = path.resolve(__dirname, '../data/todos-backup.json'
 
 // S'assurer que le répertoire data existe
 const ensureDataDirExists = () => {
-  const dataDir = path.resolve(__dirname, '../data');
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
+  // Vérifier si on est dans un environnement Vercel
+  const isVercel = process.env.VERCEL === '1';
+  
+  // Si on est sur Vercel, ne pas tenter de créer le répertoire
+  if (isVercel) {
+    console.log('Environnement Vercel détecté, utilisation du stockage en mémoire uniquement');
+    return false;
+  }
+  
+  try {
+    const dataDir = path.resolve(__dirname, '../data');
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    return true;
+  } catch (error) {
+    console.error('Impossible de créer le répertoire de données:', error);
+    return false;
   }
 };
 
 // Charger les todos sauvegardés localement
 const loadBackupTodos = () => {
-  ensureDataDirExists();
+  // Vérifier si on est dans un environnement Vercel
+  const isVercel = process.env.VERCEL === '1';
+  if (isVercel) {
+    console.log('Environnement Vercel détecté, pas de chargement local');
+    return [];
+  }
+  
+  // Tenter de créer le répertoire si nécessaire
+  const dirExists = ensureDataDirExists();
+  if (!dirExists) {
+    console.warn('Impossible d\'accéder au stockage local, utilisation d\'un tableau vide');
+    return [];
+  }
+  
+  // Charger depuis le fichier local si possible
   if (fs.existsSync(LOCAL_DB_BACKUP_PATH)) {
     try {
       const data = fs.readFileSync(LOCAL_DB_BACKUP_PATH, 'utf8');
@@ -34,12 +63,28 @@ const loadBackupTodos = () => {
 
 // Sauvegarder les todos localement
 const saveBackupTodos = (todos) => {
-  ensureDataDirExists();
+  // Vérifier si on est dans un environnement Vercel
+  const isVercel = process.env.VERCEL === '1';
+  if (isVercel) {
+    console.log('Environnement Vercel détecté, pas de sauvegarde locale');
+    return false;
+  }
+  
+  // Tenter de créer le répertoire si nécessaire
+  const dirExists = ensureDataDirExists();
+  if (!dirExists) {
+    console.warn('Impossible d\'accéder au stockage local, sauvegarde ignorée');
+    return false;
+  }
+  
+  // Sauvegarder dans le fichier local
   try {
     fs.writeFileSync(LOCAL_DB_BACKUP_PATH, JSON.stringify(todos, null, 2), 'utf8');
     console.log('Todos sauvegardés localement avec succès');
+    return true;
   } catch (error) {
     console.error('Erreur lors de la sauvegarde locale des todos:', error);
+    return false;
   }
 };
 

@@ -3,7 +3,14 @@ const Todo = require('../models/Todo');
 const db = require('../config/db');
 
 // Charger les todos sauvegardés en mémoire au démarrage
-let inMemoryTodos = db.loadBackupTodos();
+let inMemoryTodos = [];
+try {
+  inMemoryTodos = db.loadBackupTodos() || [];
+  console.log(`${inMemoryTodos.length} todos chargés en mémoire`);
+} catch (error) {
+  console.error('Erreur lors du chargement des todos:', error);
+  inMemoryTodos = [];
+}
 let isMongoConnected = false;
 
 // Vérifier si MongoDB est connecté
@@ -50,7 +57,7 @@ const syncTodosWithMongoDB = async () => {
       
       // Mettre à jour les todos en mémoire avec ceux de MongoDB
       inMemoryTodos = mongoTodos;
-      db.saveBackupTodos(inMemoryTodos);
+      safelyBackupTodos();
       
       console.log('Synchronisation avec MongoDB terminée');
       return true;
@@ -70,6 +77,20 @@ const generateId = () => {
   return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 };
 
+// Ajouter cette fonction utilitaire en haut du fichier
+const safelyBackupTodos = (todos) => {
+  try {
+    // Vérifier si on est dans un environnement Vercel pour éviter les logs inutiles
+    if (process.env.VERCEL === '1') {
+      return; // Ne pas essayer de sauvegarder sur Vercel
+    }
+    
+    db.saveBackupTodos(todos || inMemoryTodos);
+  } catch (error) {
+    console.warn('Impossible de sauvegarder les todos localement:', error);
+  }
+};
+
 // Récupérer toutes les tâches
 router.get('/', async (req, res) => {
   try {
@@ -78,7 +99,7 @@ router.get('/', async (req, res) => {
       
       // Mettre à jour la sauvegarde locale
       inMemoryTodos = todos;
-      db.saveBackupTodos(todos);
+      safelyBackupTodos();
       
       res.json(todos);
     } else {
@@ -142,7 +163,7 @@ router.post('/', async (req, res) => {
         
         // Ajouter à la mémoire et sauvegarder localement
         inMemoryTodos.unshift(savedTodo);
-        db.saveBackupTodos(inMemoryTodos);
+        safelyBackupTodos();
         
         res.status(201).json(savedTodo);
       } catch (dbError) {
@@ -154,7 +175,7 @@ router.post('/', async (req, res) => {
           createdAt: new Date()
         };
         inMemoryTodos.unshift(newTodo);
-        db.saveBackupTodos(inMemoryTodos);
+        safelyBackupTodos();
         res.status(201).json(newTodo);
       }
     } else {
@@ -165,7 +186,7 @@ router.post('/', async (req, res) => {
         createdAt: new Date()
       };
       inMemoryTodos.unshift(newTodo);
-      db.saveBackupTodos(inMemoryTodos);
+      safelyBackupTodos();
       res.status(201).json(newTodo);
     }
   } catch (error) {
@@ -214,7 +235,7 @@ router.put('/:id', async (req, res) => {
         const index = inMemoryTodos.findIndex(t => t._id.toString() === id);
         if (index !== -1) {
           inMemoryTodos[index] = todo;
-          db.saveBackupTodos(inMemoryTodos);
+          safelyBackupTodos();
         }
         
         res.json(todo);
@@ -227,7 +248,7 @@ router.put('/:id', async (req, res) => {
         }
         
         inMemoryTodos[index] = { ...inMemoryTodos[index], ...req.body };
-        db.saveBackupTodos(inMemoryTodos);
+        safelyBackupTodos();
         res.json(inMemoryTodos[index]);
       }
     } else {
@@ -238,7 +259,7 @@ router.put('/:id', async (req, res) => {
       }
       
       inMemoryTodos[index] = { ...inMemoryTodos[index], ...req.body };
-      db.saveBackupTodos(inMemoryTodos);
+      safelyBackupTodos();
       res.json(inMemoryTodos[index]);
     }
   } catch (error) {
@@ -255,7 +276,7 @@ router.put('/:id', async (req, res) => {
     const index = inMemoryTodos.findIndex(t => t._id === id);
     if (index !== -1) {
       inMemoryTodos[index] = { ...inMemoryTodos[index], ...req.body };
-      db.saveBackupTodos(inMemoryTodos);
+      safelyBackupTodos();
       return res.json(inMemoryTodos[index]);
     }
     
@@ -286,7 +307,7 @@ router.delete('/:id', async (req, res) => {
         
         // Supprimer de la mémoire et sauvegarder localement
         inMemoryTodos = inMemoryTodos.filter(t => t._id.toString() !== id);
-        db.saveBackupTodos(inMemoryTodos);
+        safelyBackupTodos();
         
         res.json({ success: true, message: 'Tâche supprimée avec succès' });
       } catch (dbError) {
@@ -294,7 +315,7 @@ router.delete('/:id', async (req, res) => {
         // Fallback vers le stockage en mémoire en cas d'erreur MongoDB
         const initialLength = inMemoryTodos.length;
         inMemoryTodos = inMemoryTodos.filter(t => t._id !== id);
-        db.saveBackupTodos(inMemoryTodos);
+        safelyBackupTodos();
         
         if (inMemoryTodos.length === initialLength) {
           return res.status(404).json({ error: 'Tâche non trouvée' });
@@ -306,7 +327,7 @@ router.delete('/:id', async (req, res) => {
       // Suppression en mémoire
       const initialLength = inMemoryTodos.length;
       inMemoryTodos = inMemoryTodos.filter(t => t._id !== id);
-      db.saveBackupTodos(inMemoryTodos);
+      safelyBackupTodos();
       
       if (inMemoryTodos.length === initialLength) {
         return res.status(404).json({ error: 'Tâche non trouvée' });
@@ -321,7 +342,7 @@ router.delete('/:id', async (req, res) => {
     const id = req.params.id;
     const initialLength = inMemoryTodos.length;
     inMemoryTodos = inMemoryTodos.filter(t => t._id !== id);
-    db.saveBackupTodos(inMemoryTodos);
+    safelyBackupTodos();
     
     if (inMemoryTodos.length !== initialLength) {
       return res.json({ success: true, message: 'Tâche supprimée avec succès' });
