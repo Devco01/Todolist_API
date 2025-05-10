@@ -515,16 +515,12 @@ export default {
       try {
         const result = await store.dispatch('testEmailConfig', testEmailAddress.value);
         if (result.success) {
-          // Stocker l'email pour l'affichage
-          testEmail.value = testEmailAddress.value;
-          // Afficher la notification visuelle
-          showNotificationSuccess.value = true;
-          // Masquer automatiquement après 3 secondes
-          setTimeout(() => {
-            showNotificationSuccess.value = false;
-          }, 3000);
           // Fermer la modal
           showEmailConfigModal.value = false;
+          
+          // Nous n'affichons plus de notification locale ici
+          // car elle est déjà affichée par le système de notification global
+          // via le store Vuex
         }
       } catch (error) {
         console.error('Erreur lors de l\'envoi de l\'email de test:', error);
