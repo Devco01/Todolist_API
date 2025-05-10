@@ -64,13 +64,23 @@ export default createStore({
       saveTodosToStorage(state.todos);
     },
     UPDATE_TODO(state, todo) {
-      const index = state.todos.findIndex(t => t._id === todo._id);
+      // Compatibilité avec MongoDB (_id) et PostgreSQL (id)
+      const todoId = todo._id || todo.id;
+      const index = state.todos.findIndex(t => (t._id && t._id === todoId) || (t.id && t.id === todoId));
       if (index !== -1) state.todos.splice(index, 1, todo);
       // Sauvegarder dans le localStorage
       saveTodosToStorage(state.todos);
     },
     DELETE_TODO(state, id) {
-      state.todos = state.todos.filter(t => t._id !== id);
+      // On ne garde que les tâches dont ni l'id ni le _id ne correspondent à l'id à supprimer
+      state.todos = state.todos.filter(todo => {
+        // Si la tâche a un _id, vérifier s'il est différent de l'id à supprimer
+        const _idDifferent = !todo._id || todo._id !== id;
+        // Si la tâche a un id, vérifier s'il est différent de l'id à supprimer
+        const idDifferent = !todo.id || todo.id !== id;
+        // Garder la tâche seulement si les deux identifiants sont différents
+        return _idDifferent && idDifferent;
+      });
       // Sauvegarder dans le localStorage
       saveTodosToStorage(state.todos);
     },
@@ -125,7 +135,12 @@ export default createStore({
         const { data } = await axios.post('/todos', todo);
         console.log('Réponse API pour createTodo:', data);
         
-        if (data && data._id) {
+        // Vérifier si l'ID est présent (compatibilité MongoDB/PostgreSQL)
+        if (data && (data._id || data.id)) {
+          // Si l'objet a seulement id mais pas _id, ajouter _id pour la compatibilité frontend
+          if (data.id && !data._id) {
+            data._id = data.id;
+          }
           commit('ADD_TODO', data);
           commit('SET_OFFLINE_MODE', false);
           commit('SET_LOADING', false);
@@ -175,7 +190,15 @@ export default createStore({
     async updateTodo({ commit, state }, todo) {
       commit('SET_ERROR', null);
       try {
-        const { data } = await axios.put(`/todos/${todo._id}`, todo);
+        // Utiliser l'ID approprié (compatibilité MongoDB/PostgreSQL)
+        const todoId = todo._id || todo.id;
+        const { data } = await axios.put(`/todos/${todoId}`, todo);
+        
+        // Si l'objet a seulement id mais pas _id, ajouter _id pour la compatibilité frontend
+        if (data.id && !data._id) {
+          data._id = data.id;
+        }
+        
         commit('UPDATE_TODO', data);
         commit('SET_OFFLINE_MODE', false);
         return { success: true, data };

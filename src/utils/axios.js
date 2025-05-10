@@ -29,6 +29,23 @@ instance.interceptors.request.use(
 instance.interceptors.response.use(
   response => {
     console.log(`Réponse reçue: ${response.status} ${response.statusText}`);
+    
+    // Compatibilité PostgreSQL (id) et MongoDB (_id)
+    if (response.data) {
+      // Si on a un tableau de résultats
+      if (Array.isArray(response.data)) {
+        response.data.forEach(item => {
+          if (item.id && !item._id) {
+            item._id = item.id;
+          }
+        });
+      } 
+      // Si on a un seul objet
+      else if (typeof response.data === 'object' && response.data.id && !response.data._id) {
+        response.data._id = response.data.id;
+      }
+    }
+    
     return response;
   },
   error => {
@@ -51,9 +68,11 @@ instance.interceptors.response.use(
           return Promise.resolve({ data: localTodos });
         }
         else if (method === 'post' && data) {
+          const newId = Math.random().toString(36).substring(2, 15);
           const newTodo = {
             ...data,
-            _id: Math.random().toString(36).substring(2, 15),
+            _id: newId,
+            id: newId,
             createdAt: new Date().toISOString()
           };
           localTodos.unshift(newTodo);
