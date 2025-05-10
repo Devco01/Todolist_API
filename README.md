@@ -2,6 +2,7 @@
 
 Application de gestion de tâches avec design inspiré de Mushishi, combinant fonctionnalités modernes et interface élégante.
 
+
 ## Fonctionnalités
 
 - ✅ Gestion complète des tâches (création, modification, suppression)
@@ -17,6 +18,5 @@ Application de gestion de tâches avec design inspiré de Mushishi, combinant fo
 - **Frontend**: Vue.js 3, Vuex, CSS moderne
 - **Backend**: Express.js, MongoDB/Mongoose
 - **Outils**: API RESTful, système de notification
-
 
 Devco01 2025
