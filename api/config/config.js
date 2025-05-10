@@ -27,7 +27,7 @@ const config = {
     // SendGrid (recommandé pour la production)
     sendgrid: {
       apiKey: process.env.SENDGRID_API_KEY,
-      from: process.env.EMAIL_FROM || 'todolist@notification.com'
+      from: process.env.EMAIL_FROM || 'noreply@todolist-app.vercel.app'
     },
     
     // SMTP général
