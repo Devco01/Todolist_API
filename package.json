@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "node api/index.js",
     "start": "NODE_ENV=production node api/index.js",
-    "build": "echo 'No build step required'",
+    "build": "echo 'API only, no build step required'",
+    "vercel-build": "echo 'Vercel deployment configured'",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
