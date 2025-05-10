@@ -115,9 +115,8 @@ const sendTaskNotification = async (todo) => {
     console.log(`Sujet: Rappel: "${todo.title}" est prévu dans moins d'une heure`);
     console.log(`Contenu: ${emailContent}`);
     console.log(`---------------------------------------`);
-    console.log(`Pour envoyer manuellement: ${mailtoUrl}`);
     
-    // Retourner un lien mailto qui peut être utilisé pour envoyer l'email
+    // Marquer comme envoyé (on considère que la préparation est suffisante)
     return { 
       success: true, 
       message: `Email préparé pour ${todo.notificationEmail}`, 

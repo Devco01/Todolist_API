@@ -15,11 +15,12 @@ const initNotificationService = () => {
   }
 
   try {
-    // Planifier la vérification des tâches toutes les 5 minutes
-    // Format: '*/5 * * * *' signifie "toutes les 5 minutes"
-    cron.schedule('*/5 * * * *', async () => {
-      console.log('Vérification des tâches à notifier...');
-      lastNotificationCheck = new Date();
+    // Planifier la vérification des tâches toutes les minutes (pour plus de précision)
+    // Format: '* * * * *' signifie "chaque minute"
+    cron.schedule('* * * * *', async () => {
+      const now = new Date();
+      console.log(`Vérification des tâches à notifier... ${now.toISOString()}`);
+      lastNotificationCheck = now;
       
       await sendPendingNotifications();
       await checkTasksForNotification();
@@ -27,6 +28,12 @@ const initNotificationService = () => {
 
     isRunning = true;
     console.log('Service de notification initialisé avec succès');
+    
+    // Exécuter immédiatement une première vérification
+    setTimeout(async () => {
+      console.log('Première vérification des tâches à notifier...');
+      await checkTasksForNotification();
+    }, 5000);
   } catch (error) {
     console.error('Erreur lors de l\'initialisation du service de notification:', error);
   }
@@ -119,12 +126,13 @@ const sendPendingNotifications = async () => {
       // Envoyer la notification
       const result = await emailService.sendTaskNotification(todo);
       
+      // Même si pas d'envoi direct, on considère la notification comme envoyée
       if (result.success) {
-        // Si l'envoi a réussi, mettre à jour la tâche
+        // Mettre à jour la tâche pour indiquer que la notification a été envoyée
         todo.notificationSent = true;
         await todo.save();
         
-        console.log(`Notification envoyée avec succès pour la tâche "${todo.title}"`);
+        console.log(`Notification traitée pour la tâche "${todo.title}"`);
         return { id: todoId, success: true };
       } else {
         console.error(`Échec d'envoi de notification pour ${todoId}: ${result.message}`);

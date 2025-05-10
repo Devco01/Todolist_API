@@ -62,9 +62,13 @@ todoSchema.methods.shouldNotify = function() {
       return false;
     }
     
-    if (!this.dueDate || !this.dueTime) {
+    if (!this.dueDate) {
       return false;
     }
+    
+    // Afficher les données pour le débogage
+    console.log(`Vérification de notification pour: ${this.title}`);
+    console.log(`Date d'échéance: ${this.dueDate}, Heure: ${this.dueTime || '00:00'}`);
     
     // Conversion de la date
     let year, month, day;
@@ -104,14 +108,21 @@ todoSchema.methods.shouldNotify = function() {
     
     const now = new Date();
     
+    // Afficher les dates/heures pour le débogage
+    console.log(`Date actuelle: ${now.toISOString()}`);
+    console.log(`Date d'échéance: ${dueDateTime.toISOString()}`);
+    
     // Calculer la différence en millisecondes
     const diff = dueDateTime.getTime() - now.getTime();
+    const diffMinutes = Math.round(diff/60000);
     
-    // Notification si le délai est entre 0 et 1 heure
+    console.log(`Différence: ${diffMinutes} minutes`);
+    
+    // Notification si le délai est entre 0 et 1 heure (60 minutes)
     const result = diff > 0 && diff <= 3600000;
     
     if (result) {
-      console.log(`Notification déclenchée pour la tâche "${this.title}" (échéance dans ${Math.round(diff/60000)} minutes)`);
+      console.log(`Notification déclenchée pour la tâche "${this.title}" (échéance dans ${diffMinutes} minutes)`);
     }
     
     return result;

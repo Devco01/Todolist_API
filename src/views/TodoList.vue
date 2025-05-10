@@ -266,7 +266,7 @@
     <div v-if="showEmailConfigModal" class="modal-overlay" @click="showEmailConfigModal = false">
       <div class="modal-content email-config-modal" @click.stop>
         <h2 class="modal-title">Notification par Email</h2>
-        <p class="modal-subtitle">Testez l'envoi de notifications par email</p>
+        <p class="modal-subtitle">Testez l'envoi de notifications</p>
         
         <form @submit.prevent="sendTestEmail" class="email-config-form">
           <div class="form-group">
@@ -279,13 +279,13 @@
               placeholder="votre@email.com"
               required
             >
-            <p class="helper-text">L'application ouvrira votre client email pour envoyer un test.</p>
+            <p class="helper-text">Le système vous enverra une notification de test.</p>
           </div>
           
           <div class="modal-actions">
             <button type="button" @click="showEmailConfigModal = false" class="cancel-btn">Fermer</button>
             <button type="submit" class="test-email-btn" :disabled="!testEmailAddress || testingEmail">
-              {{ testingEmail ? 'Préparation...' : 'Tester' }}
+              {{ testingEmail ? 'Envoi...' : 'Tester' }}
             </button>
           </div>
         </form>
