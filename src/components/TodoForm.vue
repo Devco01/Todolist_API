@@ -169,10 +169,13 @@
       </div>
     </form>
     
-    <!-- Notification de confirmation -->
+    <!-- Notification de confirmation/erreur -->
     <transition name="slide">
-      <div v-if="showNotification" class="notification success">
-        <span class="notification-icon">✓</span>
+      <div v-if="showNotification" 
+           :class="['notification', notificationMessage.includes('Erreur') ? 'error' : 'success']">
+        <span class="notification-icon">
+          {{ notificationMessage.includes('Erreur') ? '⚠️' : '✓' }}
+        </span>
         {{ notificationMessage }}
       </div>
     </transition>
@@ -265,6 +268,8 @@ export default {
 
     const submitForm = async () => {
       try {
+        console.log('Démarrage de la soumission du formulaire avec:', todo.value);
+        
         // Toujours envoyer la date au format ISO (YYYY-MM-DD) au backend
         const storageDate = formatDateForStorage(todo.value.dueDate);
         
@@ -280,11 +285,12 @@ export default {
           dueTime: `${hours.value}:${minutes.value}`
         };
         
-        console.log('Envoi de la tâche avec date formatée pour API:', todoData.dueDate);
+        console.log('Envoi de la tâche avec date formatée pour API:', todoData);
         
         const result = await store.dispatch('createTodo', todoData);
+        console.log('Résultat de createTodo:', result);
         
-        if (result.success) {
+        if (result && result.success) {
           // Afficher la notification appropriée
           if (todoData.notificationsEnabled) {
             notificationMessage.value = 'Tâche ajoutée et notification configurée avec succès!';
@@ -312,10 +318,20 @@ export default {
           hours.value = '12';
           minutes.value = '00';
         } else {
-          console.error('Erreur lors de l\'ajout de la tâche:', result.error);
+          console.error('Erreur lors de l\'ajout de la tâche:', result?.error || 'Erreur inconnue');
+          notificationMessage.value = 'Erreur lors de l\'ajout de la tâche: ' + (result?.error || 'Veuillez réessayer');
+          showNotification.value = true;
+          setTimeout(() => {
+            showNotification.value = false;
+          }, 5000);
         }
       } catch (error) {
         console.error('Erreur dans le traitement du formulaire:', error);
+        notificationMessage.value = 'Erreur technique: ' + (error.message || 'Veuillez réessayer');
+        showNotification.value = true;
+        setTimeout(() => {
+          showNotification.value = false;
+        }, 5000);
       }
     }
 
@@ -656,6 +672,10 @@ export default {
 
 .notification.success {
   background-color: var(--success);
+}
+
+.notification.error {
+  background-color: var(--danger);
 }
 
 .notification-icon {

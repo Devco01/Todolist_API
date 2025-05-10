@@ -2,19 +2,35 @@ import axios from 'axios';
 
 // Déterminer l'URL de l'API en fonction de l'environnement
 const apiUrl = import.meta.env.VITE_API_URL || '/api';
+console.log('API URL configurée:', apiUrl);
 
 // Créer une instance axios avec la configuration de base
 const instance = axios.create({
   baseURL: apiUrl,
-  timeout: 30000,  // 30 secondes
+  timeout: 15000,  // 15 secondes
   headers: {
     'Content-Type': 'application/json'
   }
 });
 
+// Intercepteur pour les requêtes
+instance.interceptors.request.use(
+  config => {
+    console.log(`Requête ${config.method.toUpperCase()} vers ${config.url}`);
+    return config;
+  },
+  error => {
+    console.error('Erreur lors de la préparation de la requête:', error);
+    return Promise.reject(error);
+  }
+);
+
 // Intercepteur pour gérer les erreurs de connexion
 instance.interceptors.response.use(
-  response => response,
+  response => {
+    console.log(`Réponse reçue: ${response.status} ${response.statusText}`);
+    return response;
+  },
   error => {
     // Si l'erreur est due à un problème de connexion au serveur
     if (!error.response) {
@@ -60,8 +76,16 @@ instance.interceptors.response.use(
           return Promise.resolve({ data: { success: true } });
         }
       }
+      
+      return Promise.reject({
+        message: 'Erreur de connexion au serveur',
+        offline: true,
+        originalError: error
+      });
     }
     
+    // Pour les autres types d'erreurs, les remonter avec plus d'infos
+    console.error(`Erreur API: ${error.response?.status} ${error.response?.statusText || error.message}`);
     return Promise.reject(error);
   }
 );

@@ -18,6 +18,10 @@ const config = {
     }
   },
   
+  // Comportement en cas d'échec de connexion MongoDB
+  // Sur Vercel, on veut continuer sans MongoDB même en production
+  exitOnMongoFailure: process.env.VERCEL === '1' ? false : (process.env.EXIT_ON_MONGO_FAILURE === 'true'),
+  
   // Configuration des emails
   email: {
     // SendGrid (recommandé pour la production)

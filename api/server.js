@@ -1,15 +1,18 @@
 const express = require('express');
-const { connectDB } = require('./config/db');
 const cors = require('cors');
-const notificationService = require('./services/notificationService');
+const notificationService = require('./services/notificationServicePg');
+const { connectPostgres } = require('./config/postgres');
 const app = express();
 
-// Connect to MongoDB
-connectDB().catch(err => {
-  console.error('Failed to connect to MongoDB:', err);
-  // Ne pas quitter le processus pour permettre au serveur de fonctionner même sans base de données
-  // process.exit(1);
-});
+// Connexion à PostgreSQL
+(async () => {
+  try {
+    await connectPostgres();
+    console.log('PostgreSQL connecté au démarrage');
+  } catch (err) {
+    console.error('Échec de la connexion à PostgreSQL:', err);
+  }
+})();
 
 // Configuration CORS simplifiée pour autoriser toutes les origines
 app.use(cors({
@@ -20,13 +23,6 @@ app.use(cors({
 
 // Middleware
 app.use(express.json());
-
-// Middleware pour vérifier l'état de la connexion MongoDB
-app.use((req, res, next) => {
-  // Ajouter l'information de connexion MongoDB à la réponse
-  res.locals.isMongoConnected = req.app.get('isMongoConnected') || false;
-  next();
-});
 
 // Stocker l'application dans une variable globale
 // Utile pour les fonctions qui ont besoin d'accéder à l'application
@@ -41,16 +37,18 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Routes
-app.use('/api/todos', require('./routes/todoRoutes'));
-app.use('/api/notifications', require('./routes/notificationRoutes'));
+// Routes principales - redirection vers les routes PostgreSQL
+app.use('/api/todos', require('./routes/todoPgRoutes'));
+
+// Autres routes
+app.use('/api/notifications', require('./routes/notificationRoutesPg'));
 app.use('/api/keep-alive', require('./routes/keepAliveRoutes'));
 
 // Health check
 app.get('/api/health', (req, res) => {
   res.status(200).json({ 
     status: 'ok',
-    mongoConnected: res.locals.isMongoConnected,
+    postgresConnected: !!req.app.get('isPostgresConnected'),
     timestamp: new Date().toISOString(),
     vercel: process.env.VERCEL === '1'
   });
@@ -62,7 +60,7 @@ app.get('/api/system-info', (req, res) => {
     version: process.env.npm_package_version || '1.0.0',
     nodeVersion: process.version,
     environment: process.env.NODE_ENV || 'development',
-    mongoConnected: res.locals.isMongoConnected,
+    postgresConnected: !!req.app.get('isPostgresConnected'),
     uptime: Math.floor(process.uptime()),
     timestamp: new Date().toISOString(),
     vercel: process.env.VERCEL === '1'
@@ -74,8 +72,6 @@ app.get('/api/system-info', (req, res) => {
 app.get('/api/cron/check-notifications', async (req, res) => {
   try {
     // Vérification du token de sécurité (si configuré)
-    // Pour les appels via Vercel Cron, ce token est facultatif
-    // mais peut être utile si vous appelez aussi cet endpoint manuellement
     const configToken = process.env.NOTIFICATION_CHECK_TOKEN;
     const requestToken = req.query.token;
     
@@ -117,7 +113,7 @@ app.get('/', (req, res) => {
     name: 'TodoList API',
     version: process.env.npm_package_version || '1.0.0',
     status: 'online',
-    message: 'API fonctionnelle',
+    message: 'API fonctionnelle avec Neon DB (PostgreSQL)',
     documentation: {
       endpoints: {
         todos: '/api/todos',

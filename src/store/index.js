@@ -109,21 +109,54 @@ export default createStore({
     },
     async createTodo({ commit, state }, todo) {
       commit('SET_ERROR', null);
+      commit('SET_LOADING', true);
       try {
+        console.log('Store: Tentative de création de la tâche avec les données:', todo);
+        
+        // Validation de base côté client
+        if (!todo.title || todo.title.trim() === '') {
+          const errorMessage = 'Le titre de la tâche est requis';
+          console.error(errorMessage);
+          commit('SET_ERROR', errorMessage);
+          commit('SET_LOADING', false);
+          return { success: false, error: errorMessage };
+        }
+
         const { data } = await axios.post('/todos', todo);
+        console.log('Réponse API pour createTodo:', data);
+        
         if (data && data._id) {
           commit('ADD_TODO', data);
           commit('SET_OFFLINE_MODE', false);
+          commit('SET_LOADING', false);
           return { success: true, data };
         } else {
-          throw new Error('Réponse invalide du serveur');
+          const errorMessage = 'Réponse invalide du serveur: ID de tâche manquant';
+          console.error(errorMessage, data);
+          commit('SET_ERROR', errorMessage);
+          commit('SET_LOADING', false);
+          return { success: false, error: errorMessage };
         }
       } catch (error) {
-        const errorMessage = error.response?.data?.error || 'Erreur lors de la création de la tâche';
+        console.error('Erreur dans l\'action createTodo:', error);
+        
+        // Extraction plus précise du message d'erreur
+        let errorMessage = 'Erreur lors de la création de la tâche';
+        if (error.response) {
+          errorMessage = error.response.data?.error || 
+                        `Erreur serveur: ${error.response.status} ${error.response.statusText}`;
+          console.error(`Erreur API détaillée:`, error.response.data);
+        } else if (error.request) {
+          errorMessage = 'Le serveur n\'a pas répondu à la requête';
+        } else if (error.message) {
+          errorMessage = error.message;
+        }
+        
         commit('SET_ERROR', errorMessage);
         
         // Si pas de réponse du serveur, utiliser le stockage local
         if (!error.response) {
+          console.log('Fallback: Utilisation du stockage local');
           commit('SET_OFFLINE_MODE', true);
           const newTodo = {
             ...todo,
@@ -131,9 +164,11 @@ export default createStore({
             createdAt: new Date().toISOString()
           };
           commit('ADD_TODO', newTodo);
+          commit('SET_LOADING', false);
           return { success: true, data: newTodo, offline: true };
         }
         
+        commit('SET_LOADING', false);
         return { success: false, error: errorMessage };
       }
     },
