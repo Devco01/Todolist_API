@@ -114,7 +114,7 @@
         
         <p class="notification-info">
           <i class="notification-icon">📧</i>
-          Les notifications ouvriront votre client email par défaut. Aucune configuration SMTP n'est nécessaire.
+          Les notifications sont envoyées automatiquement sans action requise de votre part.
         </p>
       </div>
       

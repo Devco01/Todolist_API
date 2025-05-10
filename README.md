@@ -8,21 +8,21 @@ Application de gestion de tâches avec design inspiré de Mushishi, combinant fo
 - ✅ Gestion complète des tâches (création, modification, suppression)
 - 🔄 Tri et filtrage avancés (date, priorité, catégorie)
 - 📱 Interface responsive et adaptative
-- 🔔 Notifications par email simplifiées
+- 🔔 Notifications par email automatiques
 - 💾 Sauvegarde locale des tâches (fonctionne hors connexion)
 - 🎨 Thème visuel inspiré de forêts mystiques
 
 
 ## Notifications par email
 
-L'application utilise un système de notification simplifié qui ouvre votre client email par défaut.
+L'application dispose d'un système de notification automatique.
 
 Pour activer les notifications sur une tâche:
 1. Cliquez sur l'icône de notification 🔔 d'une tâche
 2. Activez les notifications et entrez votre adresse email
 3. Sauvegardez les paramètres
 
-Une heure avant l'échéance de la tâche, l'application préparera un email et ouvrira votre client email par défaut pour l'envoyer.
+Une heure avant l'échéance de la tâche, le système enverra automatiquement une notification à l'adresse email indiquée.
 
 Pour tester les notifications, cliquez sur le bouton "✉️ Tester Notifications" en haut de la page.
 

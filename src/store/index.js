@@ -267,14 +267,10 @@ export default createStore({
       try {
         const { data } = await axios.post('/todos/test-email', { email: testEmail });
         
-        // Ouvrir le client email si un lien mailto est fourni
-        if (data.success && data.mailtoUrl) {
-          window.open(data.mailtoUrl, '_blank');
-        }
-        
+        // Ne plus ouvrir automatiquement le client email
         commit('SET_NOTIFICATION_STATUS', {
           success: data.success,
-          message: data.success ? 'Email préparé. Vérifiez si votre client email s\'ouvre automatiquement.' : data.message
+          message: data.success ? 'Notification de test envoyée avec succès' : data.message
         });
         
         return data;
