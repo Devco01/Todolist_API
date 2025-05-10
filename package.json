@@ -1,13 +1,15 @@
 {
   "name": "todolist-api",
   "version": "1.0.0",
-  "description": "Une API pour gérer une liste de tâches avec notifications",
+  "description": "Application TodoList avec frontend Vue.js et API Express",
   "main": "api/index.js",
   "scripts": {
-    "dev": "node api/index.js",
+    "dev": "vite",
     "start": "NODE_ENV=production node api/index.js",
-    "build": "echo 'API only, no build step required'",
-    "vercel-build": "echo 'Vercel deployment configured'",
+    "build": "vite build",
+    "vercel-build": "vite build",
+    "api": "node api/index.js",
+    "dev:all": "concurrently \"npm run dev\" \"npm run api\"",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
@@ -17,7 +19,15 @@
     "mongoose": "^7.3.1",
     "nodemailer": "^6.9.3",
     "node-cron": "^3.0.2",
-    "@sendgrid/mail": "^7.7.0"
+    "@sendgrid/mail": "^7.7.0",
+    "vue": "^3.3.4",
+    "vue-router": "^4.2.4",
+    "vuex": "^4.1.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^4.3.4",
+    "concurrently": "^8.2.1",
+    "vite": "^4.4.9"
   },
   "engines": {
     "node": ">=14.x"
@@ -25,7 +35,8 @@
   "keywords": [
     "todo",
     "api",
-    "notification"
+    "notification",
+    "vue"
   ],
   "author": "",
   "license": "ISC"
