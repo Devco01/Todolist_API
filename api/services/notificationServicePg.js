@@ -245,10 +245,71 @@ const sendTestNotification = async (todoId, testEmail) => {
   }
 };
 
+/**
+ * Tester la connexion SMTP sans utiliser une tâche existante
+ */
+const testSmtpConnection = async (targetEmail) => {
+  try {
+    // Valider l'email
+    if (!targetEmail || !targetEmail.includes('@')) {
+      throw new Error('Adresse email invalide');
+    }
+    
+    // Créer un email de test basique
+    const emailData = {
+      to: targetEmail,
+      subject: `[TEST SMTP] TodoList - Test de connexion au serveur d'email`,
+      text: `
+        Bonjour,
+        
+        Ceci est un email de test pour vérifier la configuration du service d'email de votre application TodoList.
+        
+        Si vous recevez cet email, cela signifie que votre service d'email est correctement configuré.
+        
+        Date et heure du test: ${new Date().toLocaleString('fr-FR')}
+        
+        Cordialement,
+        Votre application TodoList
+      `.replace(/        /g, '').trim(),
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 5px;">
+          <h2 style="color: #4a7c59;">Test de configuration SMTP</h2>
+          <p>Bonjour,</p>
+          <p>Ceci est un email de test pour vérifier la configuration du service d'email de votre application TodoList.</p>
+          <p><strong>Si vous recevez cet email, cela signifie que votre service d'email est correctement configuré.</strong></p>
+          <p>Date et heure du test: ${new Date().toLocaleString('fr-FR')}</p>
+          <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;">
+          <p style="font-size: 0.9rem; color: #666;">Cordialement,<br>Votre application TodoList</p>
+        </div>
+      `.replace(/        /g, '').trim()
+    };
+    
+    // Envoyer l'email de test
+    const result = await emailService.sendTaskNotification({
+      title: 'Test SMTP',
+      dueDate: new Date().toISOString().split('T')[0],
+      dueTime: new Date().toTimeString().split(' ')[0].substr(0, 5),
+      notificationEmail: targetEmail
+    });
+    
+    console.log(`Email de test SMTP envoyé à ${targetEmail}`);
+    
+    return {
+      success: true,
+      message: `Email de test envoyé à ${targetEmail}`,
+      details: result
+    };
+  } catch (error) {
+    console.error(`Erreur lors du test SMTP:`, error);
+    throw error;
+  }
+};
+
 module.exports = {
   initNotificationService,
   stopNotificationService,
   checkTasksForNotification,
   sendPendingNotifications,
-  sendTestNotification
+  sendTestNotification,
+  testSmtpConnection
 }; 
