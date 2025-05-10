@@ -1,44 +1,60 @@
 const nodemailer = require('nodemailer');
 
-// Créer un transporteur de test avec Ethereal Email
+// Configuration du transporteur email
 let transporter;
+let isTestMode = false;
 
-// Initialiser le transporteur de test
-const initializeTestTransporter = async () => {
-  if (transporter) return transporter;
+// Configurer un transporteur Gmail
+const initializeGmailTransporter = () => {
+  transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: 'todolist.app.notif@gmail.com', // Remplacez par votre adresse Gmail dédiée
+      pass: 'ezvb kmbi axhb knud'           // Mot de passe d'application généré depuis la sécurité du compte Google
+    }
+  });
   
+  console.log('Transporteur Gmail configuré avec succès');
+  isTestMode = false;
+  return transporter;
+};
+
+// Configurer les paramètres d'email
+const configureEmailSettings = (config) => {
   try {
-    // Créer un compte de test Ethereal
-    const testAccount = await nodemailer.createTestAccount();
+    if (!config || !config.email || !config.password) {
+      return { 
+        success: false, 
+        message: 'Configuration incomplète: email et mot de passe requis' 
+      };
+    }
     
-    // Créer un transporteur réutilisable avec Ethereal
+    // Créer un nouveau transporteur avec les paramètres fournis
     transporter = nodemailer.createTransport({
-      host: 'smtp.ethereal.email',
-      port: 587,
-      secure: false,
+      service: 'gmail',
       auth: {
-        user: testAccount.user,
-        pass: testAccount.pass
+        user: config.email,
+        pass: config.password
       }
     });
     
-    console.log('Transporteur de test Ethereal créé avec succès');
-    return transporter;
+    isTestMode = false;
+    
+    return {
+      success: true,
+      message: 'Configuration email enregistrée avec succès'
+    };
   } catch (error) {
-    console.error('Erreur lors de la création du transporteur de test:', error);
-    
-    // En cas d'échec, utiliser un transporteur "preview" qui ne fait rien
-    transporter = nodemailer.createTransport({
-      jsonTransport: true
-    });
-    
-    console.log('Transporteur de prévisualisation configuré (fallback)');
-    return transporter;
+    console.error('Erreur lors de la configuration email:', error);
+    return {
+      success: false,
+      message: `Erreur: ${error.message}`
+    };
   }
 };
 
-// Initialiser immédiatement
-initializeTestTransporter();
+// Initialiser directement avec Gmail
+initializeGmailTransporter();
 
 // Envoyer un email de notification pour une tâche
 const sendTaskNotification = async (todo) => {
@@ -50,7 +66,7 @@ const sendTaskNotification = async (todo) => {
   try {
     // S'assurer que le transporteur est initialisé
     if (!transporter) {
-      await initializeTestTransporter();
+      initializeGmailTransporter();
     }
     
     // Formater la date pour l'affichage
@@ -72,7 +88,7 @@ const sendTaskNotification = async (todo) => {
     
     // Définir les options d'email
     const mailOptions = {
-      from: '"TodoList App" <notification@todolist.app>',
+      from: '"TodoList App" <todolist.app.notif@gmail.com>',
       to: todo.notificationEmail,
       subject: `Rappel: "${todo.title}" est prévu dans moins d'une heure`,
       html: `
@@ -106,17 +122,10 @@ const sendTaskNotification = async (todo) => {
     
     console.log(`Email envoyé: ${info.messageId}`);
     
-    let previewUrl = '';
-    if (info.messageId) {
-      // Pour Ethereal Email
-      previewUrl = nodemailer.getTestMessageUrl(info);
-      console.log(`Prévisualisation: ${previewUrl}`);
-    }
-    
     return { 
       success: true, 
       message: `Email envoyé à ${todo.notificationEmail}`,
-      previewUrl
+      messageId: info.messageId
     };
   } catch (error) {
     console.error(`Erreur lors de l'envoi de l'email:`, error.message);
@@ -167,5 +176,6 @@ const getPriorityLabel = (priority) => {
 
 module.exports = {
   sendTaskNotification,
-  testNotification
+  testNotification,
+  configureEmailSettings
 }; 

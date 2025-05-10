@@ -267,7 +267,6 @@ export default createStore({
       try {
         const { data } = await axios.post('/todos/test-email', { email: testEmail });
         
-        // Ne plus ouvrir la prévisualisation dans une nouvelle fenêtre
         commit('SET_NOTIFICATION_STATUS', {
           success: data.success,
           message: data.success 
