@@ -100,12 +100,44 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Le titre est requis' });
     }
     
+    // Normaliser le format de date si nécessaire
+    const todoData = { ...req.body };
+    
+    // S'assurer que dueDate est au bon format (YYYY-MM-DD) pour le stockage
+    if (todoData.dueDate) {
+      try {
+        // Si format DD/MM/YYYY, convertir en YYYY-MM-DD
+        if (/^\d{2}\/\d{2}\/\d{4}$/.test(todoData.dueDate)) {
+          const [day, month, year] = todoData.dueDate.split('/');
+          todoData.dueDate = `${year}-${month}-${day}`;
+          console.log('Date convertie:', todoData.dueDate);
+        } 
+        // Vérifier si la date est valide
+        else if (!/^\d{4}-\d{2}-\d{2}$/.test(todoData.dueDate)) {
+          // Essayer de parser la date
+          const date = new Date(todoData.dueDate);
+          if (!isNaN(date.getTime())) {
+            todoData.dueDate = date.toISOString().split('T')[0];
+            console.log('Date normalisée:', todoData.dueDate);
+          } else {
+            // Si la date n'est pas valide, utiliser la date actuelle
+            console.warn('Date invalide, utilisation de la date actuelle:', todoData.dueDate);
+            const today = new Date();
+            todoData.dueDate = today.toISOString().split('T')[0];
+          }
+        }
+      } catch (dateError) {
+        console.error('Erreur lors du traitement de la date:', dateError);
+        // Continuer avec la date fournie
+      }
+    }
+    
     // Tentative de synchronisation avec MongoDB
     await syncTodosWithMongoDB().catch(console.error);
     
     if (checkMongoConnection()) {
       try {
-        const todo = new Todo(req.body);
+        const todo = new Todo(todoData);
         const savedTodo = await todo.save();
         
         // Ajouter à la mémoire et sauvegarder localement
@@ -117,7 +149,7 @@ router.post('/', async (req, res) => {
         console.error('MongoDB error:', dbError);
         // Fallback vers le stockage en mémoire en cas d'erreur MongoDB
         const newTodo = {
-          ...req.body,
+          ...todoData,
           _id: generateId(),
           createdAt: new Date()
         };
@@ -128,7 +160,7 @@ router.post('/', async (req, res) => {
     } else {
       // Créer un todo en mémoire
       const newTodo = {
-        ...req.body,
+        ...todoData,
         _id: generateId(),
         createdAt: new Date()
       };
@@ -145,15 +177,11 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: messages.join(', ') });
     }
     
-    // Essayer de créer en mémoire en cas d'erreur
-    const newTodo = {
-      ...req.body,
-      _id: generateId(),
-      createdAt: new Date()
-    };
-    inMemoryTodos.unshift(newTodo);
-    db.saveBackupTodos(inMemoryTodos);
-    res.status(201).json(newTodo);
+    // Renvoyer une erreur explicite
+    return res.status(500).json({ 
+      error: 'Erreur lors de la création de la tâche',
+      details: error.message
+    });
   }
 });
 

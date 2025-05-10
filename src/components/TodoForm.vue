@@ -265,24 +265,22 @@ export default {
 
     const submitForm = async () => {
       try {
-        // S'assurer que la date est au format attendu par le backend (ISO ou YYYY-MM-DD)
+        // Toujours envoyer la date au format ISO (YYYY-MM-DD) au backend
         const storageDate = formatDateForStorage(todo.value.dueDate);
-        const displayDate = formatDateForDisplay(storageDate);
         
         // Vérifier que la date est valide
         if (!/^\d{4}-\d{2}-\d{2}$/.test(storageDate)) {
-          console.warn('Format de date non valide:', todo.value.dueDate);
-          // Continuer quand même, le backend peut gérer cela
+          console.warn('Format de date non valide, conversion automatique:', todo.value.dueDate, '→', storageDate);
         }
         
         // Combiner heures et minutes
         const todoData = { 
           ...todo.value,
-          dueDate: displayDate,
+          dueDate: storageDate, // Envoyer la date au format YYYY-MM-DD
           dueTime: `${hours.value}:${minutes.value}`
         };
         
-        console.log('Envoi de la tâche avec date:', todoData.dueDate);
+        console.log('Envoi de la tâche avec date formatée pour API:', todoData.dueDate);
         
         const result = await store.dispatch('createTodo', todoData);
         
