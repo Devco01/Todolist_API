@@ -111,6 +111,26 @@ app.get('/api/cron/check-notifications', async (req, res) => {
   }
 });
 
+// Ajouter une route pour la racine - utile pour Vercel et pour tester que l'API fonctionne
+app.get('/', (req, res) => {
+  res.status(200).json({
+    name: 'TodoList API',
+    version: process.env.npm_package_version || '1.0.0',
+    status: 'online',
+    message: 'API fonctionnelle',
+    documentation: {
+      endpoints: {
+        todos: '/api/todos',
+        notifications: '/api/notifications',
+        health: '/api/health',
+        systemInfo: '/api/system-info',
+        keepAlive: '/api/keep-alive'
+      }
+    },
+    timestamp: new Date().toISOString()
+  });
+});
+
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({ error: 'Route non trouvée' });
