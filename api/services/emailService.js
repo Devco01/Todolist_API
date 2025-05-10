@@ -65,28 +65,13 @@ const initTransporter = (customConfig = null) => {
   }
 };
 
-// Envoyer un email de notification pour une tâche
+// Service d'email simplifié
 const sendTaskNotification = async (todo) => {
   if (!todo || !todo.notificationEmail) {
     console.warn('Impossible d\'envoyer l\'email: données de tâche invalides ou email manquant');
-    return false;
+    return { success: false, message: 'Email du destinataire manquant' };
   }
   
-  // Vérifier que le transporteur est initialisé avec les variables d'environnement
-  if (!transporter) {
-    const success = initTransporter();
-    
-    // Si l'initialisation a échoué et qu'il n'y a pas de configuration précédente mémorisée
-    if (!success && !lastEmailConfig) {
-      // Informer l'utilisateur que les notifications par email nécessitent une configuration
-      console.log(`Email de notification vers ${todo.notificationEmail} impossible: configuration email manquante`);
-      return { 
-        success: false, 
-        message: 'Configuration email manquante. Veuillez configurer les variables d\'environnement EMAIL_USER et EMAIL_PASS ou utiliser l\'API de configuration d\'email.' 
-      };
-    }
-  }
-
   try {
     // Formater la date pour l'affichage
     let formattedDate = todo.dueDate;
@@ -105,68 +90,66 @@ const sendTaskNotification = async (todo) => {
     // Formater l'heure pour l'affichage
     const formattedTime = todo.dueTime || '00:00';
     
-    // Déterminer l'expéditeur de l'email
-    const senderEmail = process.env.EMAIL_USER || lastEmailConfig?.email;
-    
-    // Construire le contenu de l'email avec plus d'informations
-    const mailOptions = {
-      from: senderEmail ? `"TodoList App" <${senderEmail}>` : `"TodoList App" <noreply@todolist.app>`,
-      to: todo.notificationEmail,
-      subject: `Rappel: "${todo.title}" est prévu dans moins d'une heure`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 5px;">
-          <h2 style="color: #4a7c59;">Rappel de tâche</h2>
-          <p>Bonjour,</p>
-          <p>Nous vous rappelons que la tâche suivante est prévue dans moins d'une heure :</p>
-          <div style="background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin: 15px 0; border-left: 4px solid #4a7c59;">
-            <h3 style="margin-top: 0; color: #333;">${todo.title}</h3>
-            ${todo.description ? `<p style="color: #666;">${todo.description}</p>` : ''}
-            <p><strong>Date :</strong> ${formattedDate}</p>
-            <p><strong>Heure :</strong> ${formattedTime}</p>
-            <p><strong>Catégorie :</strong> ${todo.category || 'Non catégorisé'}</p>
-            <p><strong>Priorité :</strong> <span style="color: ${getPriorityColor(todo.priority)};">${getPriorityLabel(todo.priority)}</span></p>
-          </div>
-          <p>Vous recevez cet email car vous avez activé les notifications pour cette tâche.</p>
-          <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;">
-          <p style="font-size: 0.9rem; color: #666;">
-            Cordialement,<br>
-            Votre application TodoList<br>
-            <em>Ne répondez pas à cet email, il a été envoyé automatiquement.</em>
-          </p>
-        </div>
-      `
-    };
-
-    // Ajouter des logs détaillés
-    console.log(`Tentative d'envoi d'email pour "${todo.title}" à ${todo.notificationEmail}`);
-    
-    // Envoyer l'email avec gestion du délai
-    const info = await Promise.race([
-      transporter.sendMail(mailOptions),
-      new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Délai d\'envoi d\'email dépassé')), 30000)
-      )
-    ]);
-    
-    console.log(`Email envoyé avec succès: ${info.messageId}`);
-    return { success: true, message: 'Email envoyé avec succès' };
-  } catch (error) {
-    console.error(`Erreur lors de l'envoi de l'email pour "${todo.title}":`, error.message);
-    
-    // Tentative de réinitialisation du transporteur en cas d'erreur d'authentification
-    if (error.message.includes('auth') || error.message.includes('credentials')) {
-      console.log('Tentative de réinitialisation du transporteur email...');
-      transporter = null;
+    // Créer le contenu de l'email
+    const emailContent = `
+      Rappel de tâche: "${todo.title}" est prévu dans moins d'une heure
       
-      // Réinitialiser avec la dernière configuration qui a fonctionné
-      if (lastEmailConfig) {
-        initTransporter(lastEmailConfig);
-      } else {
-        initTransporter();
-      }
-    }
+      Date: ${formattedDate}
+      Heure: ${formattedTime}
+      Catégorie: ${todo.category || 'Non catégorisé'}
+      Priorité: ${getPriorityLabel(todo.priority)}
+      
+      ${todo.description ? `Description: ${todo.description}` : ''}
+      
+      Vous recevez cet email car vous avez activé les notifications pour cette tâche.
+    `;
     
-    return { success: false, message: `Erreur d'envoi: ${error.message}` };
+    // Créer l'URL pour le service d'email
+    const subject = encodeURIComponent(`Rappel: "${todo.title}" est prévu dans moins d'une heure`);
+    const body = encodeURIComponent(emailContent);
+    const mailtoUrl = `mailto:${todo.notificationEmail}?subject=${subject}&body=${body}`;
+    
+    // Simuler l'envoi d'email
+    console.log(`Email de notification préparé pour ${todo.notificationEmail}`);
+    console.log(`---------------------------------------`);
+    console.log(`Sujet: Rappel: "${todo.title}" est prévu dans moins d'une heure`);
+    console.log(`Contenu: ${emailContent}`);
+    console.log(`---------------------------------------`);
+    console.log(`Pour envoyer manuellement: ${mailtoUrl}`);
+    
+    // Retourner un lien mailto qui peut être utilisé pour envoyer l'email
+    return { 
+      success: true, 
+      message: `Email préparé pour ${todo.notificationEmail}`, 
+      mailtoUrl: mailtoUrl
+    };
+  } catch (error) {
+    console.error(`Erreur lors de la préparation de l'email:`, error.message);
+    return { success: false, message: `Erreur: ${error.message}` };
+  }
+};
+
+// Tester les notifications
+const testNotification = async (todoId, email) => {
+  try {
+    // Créer une tâche factice pour tester
+    const testTodo = {
+      title: 'Test de notification email',
+      description: 'Ceci est un email de test pour vérifier les notifications.',
+      dueDate: new Date().toISOString().split('T')[0],
+      dueTime: new Date().toTimeString().split(' ')[0].substring(0, 5),
+      category: 'autre',
+      priority: 'medium',
+      notificationEmail: email
+    };
+    
+    // Préparer l'email
+    const result = await sendTaskNotification(testTodo);
+    
+    return result;
+  } catch (error) {
+    console.error('Erreur lors du test de notification:', error);
+    return { success: false, message: `Erreur: ${error.message}` };
   }
 };
 
@@ -228,7 +211,7 @@ const configureEmailSettings = (emailConfig) => {
   }
 };
 
-// Ajouter ces fonctions utilitaires au début du fichier
+// Fonctions utilitaires
 const getPriorityColor = (priority) => {
   switch (priority) {
     case 'high': return '#bc4749';
@@ -248,5 +231,6 @@ const getPriorityLabel = (priority) => {
 module.exports = {
   initTransporter,
   sendTaskNotification,
-  configureEmailSettings
+  configureEmailSettings,
+  testNotification
 }; 

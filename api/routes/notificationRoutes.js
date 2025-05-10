@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const Todo = require('../models/Todo');
 const notificationService = require('../services/notificationService');
+const emailService = require('../services/emailService');
 
 // Obtenir les statistiques de notification
 router.get('/stats', (req, res) => {
@@ -100,13 +101,9 @@ router.post('/test/:id', async (req, res) => {
     const { testEmail } = req.body;
     
     // Envoyer la notification de test
-    const result = await notificationService.testNotification(id, testEmail);
+    const result = await emailService.testNotification(id, testEmail);
     
-    if (result.success) {
-      res.json({ message: result.message });
-    } else {
-      res.status(400).json({ error: result.message });
-    }
+    res.status(result.success ? 200 : 400).json(result);
   } catch (error) {
     console.error('Error sending test notification:', error);
     res.status(500).json({ error: 'Erreur lors de l\'envoi de la notification de test' });

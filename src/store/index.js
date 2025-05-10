@@ -267,14 +267,19 @@ export default createStore({
       try {
         const { data } = await axios.post('/todos/test-email', { email: testEmail });
         
+        // Ouvrir le client email si un lien mailto est fourni
+        if (data.success && data.mailtoUrl) {
+          window.open(data.mailtoUrl, '_blank');
+        }
+        
         commit('SET_NOTIFICATION_STATUS', {
           success: data.success,
-          message: data.success ? 'Email de test envoyé avec succès' : data.message
+          message: data.success ? 'Email préparé. Vérifiez si votre client email s\'ouvre automatiquement.' : data.message
         });
         
         return data;
       } catch (error) {
-        const errorMessage = error.response?.data?.message || 'Erreur lors de l\'envoi de l\'email de test';
+        const errorMessage = error.response?.data?.message || 'Erreur lors de la préparation de l\'email de test';
         
         commit('SET_NOTIFICATION_STATUS', {
           success: false,
