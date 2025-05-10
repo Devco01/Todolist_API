@@ -1,38 +1,32 @@
 {
-  "name": "todolist",
+  "name": "todolist-api",
   "version": "1.0.0",
+  "description": "Une API pour gérer une liste de tâches avec notifications",
+  "main": "api/index.js",
   "scripts": {
-    "dev": "vite",
-    "build": "npm run vercel-build",
-    "serve": "node api/index.js",
-    "dev:all": "concurrently \"npm run dev\" \"npm run dev:api\"",
-    "dev:api": "nodemon api/index.js",
-    "vercel-build": "vite build",
-    "postinstall": "npm run build",
-    "init-blob": "node scripts/init-blob.js"
+    "dev": "node api/index.js",
+    "start": "NODE_ENV=production node api/index.js",
+    "build": "echo 'API only, no build step required'",
+    "vercel-build": "echo 'Vercel deployment configured'",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
-    "axios": "^1.5.0",
     "cors": "^2.8.5",
-    "dotenv": "^16.0.3",
+    "dotenv": "^16.3.1",
     "express": "^4.18.2",
-    "mongoose": "^7.0.0",
-    "node-cron": "^3.0.3",
-    "nodemailer": "^6.10.1",
-    "nodemailer-sendgrid": "^1.0.3",
-    "nodemailer-sendgrid-transport": "^0.2.0",
-    "vue": "^3.3.4",
-    "vue-router": "^4.2.4",
-    "vuex": "^4.1.0"
-  },
-  "devDependencies": {
-    "@vitejs/plugin-vue": "^4.3.4",
-    "@vue/compiler-sfc": "^3.3.4",
-    "concurrently": "^8.2.1",
-    "nodemon": "^3.0.1",
-    "vite": "^4.4.9"
+    "mongoose": "^7.3.1",
+    "nodemailer": "^6.9.3",
+    "node-cron": "^3.0.2",
+    "@sendgrid/mail": "^7.7.0"
   },
   "engines": {
-    "node": ">=16.0.0"
-  }
+    "node": ">=14.x"
+  },
+  "keywords": [
+    "todo",
+    "api",
+    "notification"
+  ],
+  "author": "",
+  "license": "ISC"
 }

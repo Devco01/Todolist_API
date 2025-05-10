@@ -1,16 +1,134 @@
-const router = require('express').Router();
+const express = require('express');
+const router = express.Router();
 const Todo = require('../models/Todo');
 const notificationService = require('../services/notificationService');
 const emailService = require('../services/emailService');
 
+// Endpoint pour vérifier manuellement les notifications
+// GET /api/notifications/force-check
+// Peut être protégé par un token via ?token=VOTRE_TOKEN
+router.get('/force-check', async (req, res) => {
+  try {
+    // Vérification du token de sécurité (si configuré)
+    const configToken = process.env.NOTIFICATION_CHECK_TOKEN;
+    const requestToken = req.query.token;
+    
+    // Si un token est configuré dans les variables d'environnement, on vérifie
+    if (configToken && configToken.length > 0) {
+      if (!requestToken || requestToken !== configToken) {
+        return res.status(401).json({
+          success: false,
+          message: 'Token de sécurité invalide ou manquant'
+        });
+      }
+    }
+    
+    console.log('Vérification manuelle des notifications déclenchée');
+    
+    // Exécuter la vérification des tâches à notifier
+    await notificationService.checkTasksForNotification();
+    
+    // Exécuter l'envoi des notifications en attente
+    const sendResult = await notificationService.sendPendingNotifications();
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Vérification des notifications lancée avec succès',
+      result: sendResult,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Erreur lors de la vérification manuelle des notifications:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Erreur lors de la vérification des notifications',
+      error: error.message
+    });
+  }
+});
+
 // Obtenir les statistiques de notification
+// GET /api/notifications/stats
 router.get('/stats', (req, res) => {
   try {
     const stats = notificationService.getNotificationStats();
-    res.json(stats);
+    return res.status(200).json({
+      success: true,
+      stats
+    });
   } catch (error) {
-    console.error('Error fetching notification stats:', error);
-    res.status(500).json({ error: 'Erreur lors de la récupération des statistiques de notification' });
+    return res.status(500).json({
+      success: false,
+      message: 'Erreur lors de la récupération des statistiques',
+      error: error.message
+    });
+  }
+});
+
+// Activer/désactiver le mode debug
+// POST /api/notifications/debug
+router.post('/debug', (req, res) => {
+  try {
+    const { enabled } = req.body;
+    
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        message: 'Le paramètre "enabled" doit être un booléen'
+      });
+    }
+    
+    const result = notificationService.setDebugMode(enabled);
+    
+    return res.status(200).json({
+      success: true,
+      message: `Mode debug ${enabled ? 'activé' : 'désactivé'}`,
+      result
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Erreur lors de la modification du mode debug',
+      error: error.message
+    });
+  }
+});
+
+// Rafraîchir la connexion email
+// POST /api/notifications/refresh-email
+router.post('/refresh-email', async (req, res) => {
+  try {
+    await emailService.refreshTransporter();
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Connexion email rafraîchie avec succès'
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Erreur lors du rafraîchissement de la connexion email',
+      error: error.message
+    });
+  }
+});
+
+// Réinitialiser le service de notification
+// POST /api/notifications/reset
+router.post('/reset', async (req, res) => {
+  try {
+    await notificationService.resetNotificationService();
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Service de notification réinitialisé avec succès'
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Erreur lors de la réinitialisation du service',
+      error: error.message
+    });
   }
 });
 
@@ -84,6 +202,33 @@ router.put('/:id', async (req, res) => {
     }
     
     res.status(500).json({ error: 'Erreur lors de la mise à jour des préférences de notification' });
+  }
+});
+
+// Obtenir l'historique des notifications
+// GET /api/notifications/history
+router.get('/history', async (req, res) => {
+  try {
+    // Récupérer le paramètre limit de la requête (avec valeur par défaut de 50)
+    const limit = parseInt(req.query.limit) || 50;
+    
+    // Limiter à 200 logs maximum
+    const safeLimit = Math.min(limit, 200);
+    
+    const history = await notificationService.getNotificationHistory(safeLimit);
+    
+    return res.status(200).json({
+      success: true,
+      count: history.length,
+      history
+    });
+  } catch (error) {
+    console.error('Erreur lors de la récupération de l\'historique des notifications:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Erreur lors de la récupération de l\'historique',
+      error: error.message
+    });
   }
 });
 

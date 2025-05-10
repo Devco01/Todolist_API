@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const config = require('../config/config');
 
 const todoSchema = new mongoose.Schema({
   title: {
@@ -54,7 +55,7 @@ const todoSchema = new mongoose.Schema({
 todoSchema.methods.shouldNotify = function() {
   try {
     // Vérifications de base
-    if (!this.notificationsEnabled || this.notificationSent || this.completed) {
+    if (!this.notificationsEnabled || this.completed) {
       return false;
     }
     
@@ -67,22 +68,24 @@ todoSchema.methods.shouldNotify = function() {
     }
     
     // Afficher les données pour le débogage
-    console.log(`Vérification de notification pour: ${this.title}`);
-    console.log(`Date d'échéance: ${this.dueDate}, Heure: ${this.dueTime || '00:00'}`);
+    if (config.notifications.debugMode) {
+      console.log(`Vérification de notification pour: ${this.title}`);
+      console.log(`Date d'échéance: ${this.dueDate}, Heure: ${this.dueTime || '00:00'}`);
+    }
     
-    // Méthode simplifiée pour créer une date d'échéance valide
-    let dueDateTime;
+    // Créer une date d'échéance valide de manière plus robuste
+    let dueDateTime = null;
     
     try {
-      // Utiliser directement le format ISO pour plus de fiabilité
-      dueDateTime = new Date(`${this.dueDate}T${this.dueTime || '00:00'}`);
-    } catch (e) {
-      console.error('Erreur lors de la création de la date d\'échéance:', e);
-      
-      // Tentative alternative de création de la date
-      try {
-        // Format YYYY-MM-DD
-        if (this.dueDate.includes('-')) {
+      // Détection et conversion du format de date
+      if (this.dueDate.includes('-')) { // Format YYYY-MM-DD
+        // Utiliser ISO format avec la bonne heure
+        const dateStr = `${this.dueDate}T${this.dueTime || '00:00'}:00`;
+        dueDateTime = new Date(dateStr);
+        
+        // Vérifier si la date est valide
+        if (isNaN(dueDateTime.getTime())) {
+          // Essayer une méthode alternative
           const [year, month, day] = this.dueDate.split('-');
           const [hours, minutes] = (this.dueTime || '00:00').split(':');
           dueDateTime = new Date(
@@ -92,49 +95,71 @@ todoSchema.methods.shouldNotify = function() {
             parseInt(hours), 
             parseInt(minutes)
           );
-        } 
-        // Format DD/MM/YYYY
-        else if (this.dueDate.includes('/')) {
-          const [day, month, year] = this.dueDate.split('/');
-          const [hours, minutes] = (this.dueTime || '00:00').split(':');
-          dueDateTime = new Date(
-            parseInt(year), 
-            parseInt(month) - 1, 
-            parseInt(day), 
-            parseInt(hours), 
-            parseInt(minutes)
-          );
-        } else {
-          return false;
         }
-      } catch (e2) {
-        console.error('Seconde erreur lors de la création de la date d\'échéance:', e2);
+      } else if (this.dueDate.includes('/')) { // Format DD/MM/YYYY
+        const [day, month, year] = this.dueDate.split('/');
+        const [hours, minutes] = (this.dueTime || '00:00').split(':');
+        dueDateTime = new Date(
+          parseInt(year), 
+          parseInt(month) - 1, 
+          parseInt(day), 
+          parseInt(hours), 
+          parseInt(minutes)
+        );
+      } else {
+        console.error('Format de date non reconnu:', this.dueDate);
         return false;
       }
+    } catch (e) {
+      console.error('Erreur lors de la création de la date d\'échéance:', e);
+      return false;
     }
     
     // Vérifier si la date est valide
-    if (isNaN(dueDateTime.getTime())) {
-      console.error('Date d\'échéance invalide:', this.dueDate, this.dueTime);
+    if (!dueDateTime || isNaN(dueDateTime.getTime())) {
+      console.error('Date d\'échéance invalide après conversion:', this.dueDate, this.dueTime);
       return false;
     }
     
     const now = new Date();
     
     // Afficher les dates/heures pour le débogage
-    console.log(`Date actuelle: ${now.toISOString()}`);
-    console.log(`Date d'échéance: ${dueDateTime.toISOString()}`);
+    if (config.notifications.debugMode) {
+      console.log(`Date actuelle: ${now.toISOString()}`);
+      console.log(`Date d'échéance: ${dueDateTime.toISOString()}`);
+    }
     
-    // Calculer la différence en millisecondes
+    // Calculer la différence en millisecondes et minutes
     const diff = dueDateTime.getTime() - now.getTime();
     const diffMinutes = Math.round(diff/60000);
     
-    console.log(`Différence: ${diffMinutes} minutes`);
+    if (config.notifications.debugMode) {
+      console.log(`Différence: ${diffMinutes} minutes`);
+    }
     
-    // Notification si le délai est entre 55 et 65 minutes avant l'échéance
-    // Cette fenêtre plus large permet de s'assurer que la notification est envoyée
-    const minutesToNotify = 60; // 1 heure avant l'échéance
-    const tolerance = 5; // 5 minutes de tolérance
+    // Si la tâche est déjà passée, pas besoin de notification
+    if (diffMinutes < 0) {
+      console.log(`La tâche "${this.title}" est déjà passée, pas de notification`);
+      return false;
+    }
+    
+    // Si la notification a déjà été envoyée, vérifier si on est proche de l'échéance pour un rappel
+    if (this.notificationSent) {
+      // Envoyer un rappel urgent uniquement si on est très proche de l'échéance
+      const isUrgent = diffMinutes > 0 && diffMinutes <= config.notifications.urgentReminderMinutes;
+      
+      if (isUrgent) {
+        console.log(`⚠️ Rappel URGENT pour "${this.title}" - Échéance imminente dans ${diffMinutes} minutes!`);
+        return true;
+      }
+      
+      return false;
+    }
+    
+    // Notification principale - autour d'une heure avant
+    // Utiliser une fenêtre plus large pour éviter de manquer des notifications
+    const minutesToNotify = config.notifications.notifyBeforeMinutes; // 1 heure avant l'échéance
+    const tolerance = config.notifications.toleranceMinutes; // 7 minutes de tolérance pour être sûr
     
     const withinNotificationWindow = 
       diffMinutes >= (minutesToNotify - tolerance) && 
@@ -146,7 +171,8 @@ todoSchema.methods.shouldNotify = function() {
     }
     
     // Si la tâche est à moins de 60 minutes de l'échéance, mais la notification n'a pas été envoyée
-    if (diff > 0 && diff <= 3600000 && !this.notificationSent) {
+    // Cela permet de rattraper les notifications manquées
+    if (diff > 0 && diffMinutes < minutesToNotify && !this.notificationSent) {
       console.log(`⚠️ La tâche "${this.title}" échoit bientôt (${diffMinutes} min) et n'a pas été notifiée. Envoi immédiat.`);
       return true;
     }
