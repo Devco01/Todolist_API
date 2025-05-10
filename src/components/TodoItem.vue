@@ -109,7 +109,12 @@
         
         <p class="notification-info">
           <i class="notification-icon">ℹ️</i>
-          Vous recevrez un email 1 heure avant l'échéance de cette tâche.
+          Vous recevrez une notification 1 heure avant l'échéance de cette tâche.
+        </p>
+        
+        <p class="notification-info">
+          <i class="notification-icon">📧</i>
+          Les notifications ouvriront votre client email par défaut. Aucune configuration SMTP n'est nécessaire.
         </p>
       </div>
       

@@ -15,16 +15,13 @@ const initNotificationService = () => {
   }
 
   try {
-    // Initialiser le service d'email
-    emailService.initTransporter();
-
     // Planifier la vérification des tâches toutes les 5 minutes
     // Format: '*/5 * * * *' signifie "toutes les 5 minutes"
     cron.schedule('*/5 * * * *', async () => {
       console.log('Vérification des tâches à notifier...');
       lastNotificationCheck = new Date();
       
-      await processNotificationQueue();
+      await sendPendingNotifications();
       await checkTasksForNotification();
     });
 
@@ -35,86 +32,7 @@ const initNotificationService = () => {
   }
 };
 
-// Ajouter une notification à la file d'attente
-const queueNotification = (todo) => {
-  // Vérifier si cette tâche est déjà dans la file d'attente
-  const exists = notificationQueue.some(item => item._id.toString() === todo._id.toString());
-  if (!exists) {
-    notificationQueue.push({
-      _id: todo._id,
-      title: todo.title,
-      email: todo.notificationEmail,
-      dueDate: todo.dueDate,
-      dueTime: todo.dueTime,
-      attempts: 0,
-      lastAttempt: null
-    });
-    console.log(`Notification ajoutée à la file d'attente pour: ${todo.title}`);
-  }
-};
-
-// Traiter la file d'attente de notifications
-const processNotificationQueue = async () => {
-  if (notificationQueue.length === 0) return;
-  
-  console.log(`Traitement de ${notificationQueue.length} notifications en attente...`);
-  
-  const now = new Date();
-  const remainingQueue = [];
-  
-  for (const item of notificationQueue) {
-    // Limiter à 3 tentatives, avec un délai croissant entre les tentatives
-    if (item.attempts >= 3) {
-      console.log(`Notification abandonnée après 3 tentatives: ${item.title}`);
-      continue;
-    }
-    
-    // Si dernière tentative il y a moins de (attempts * 5) minutes, attendre
-    if (item.lastAttempt) {
-      const minutesSinceLastAttempt = (now - new Date(item.lastAttempt)) / (1000 * 60);
-      if (minutesSinceLastAttempt < (item.attempts * 5)) {
-        remainingQueue.push(item);
-        continue;
-      }
-    }
-    
-    try {
-      // Récupérer la tâche à jour depuis la base de données
-      const todo = await Todo.findById(item._id);
-      
-      if (!todo || todo.notificationSent || todo.completed || !todo.notificationsEnabled) {
-        console.log(`Notification ignorée (tâche supprimée, déjà envoyée, terminée ou désactivée): ${item.title}`);
-        continue;
-      }
-      
-      // Envoyer l'email
-      const emailSent = await emailService.sendTaskNotification(todo);
-      
-      if (emailSent) {
-        // Marquer la notification comme envoyée
-        todo.notificationSent = true;
-        await todo.save();
-        console.log(`Notification envoyée avec succès: ${todo.title}`);
-      } else {
-        // Si échec, incrémenter le compteur de tentatives et ajouter à la file d'attente restante
-        item.attempts += 1;
-        item.lastAttempt = now;
-        remainingQueue.push(item);
-        console.log(`Échec de l'envoi de notification (tentative ${item.attempts}): ${item.title}`);
-      }
-    } catch (error) {
-      console.error(`Erreur lors du traitement de la notification: ${error}`);
-      item.attempts += 1;
-      item.lastAttempt = now;
-      remainingQueue.push(item);
-    }
-  }
-  
-  notificationQueue = remainingQueue;
-  console.log(`${notificationQueue.length} notifications restent dans la file d'attente`);
-};
-
-// Vérifier les tâches qui doivent être notifiées
+// Vérifier les tâches qui nécessitent une notification
 const checkTasksForNotification = async () => {
   try {
     // Vérifier si MongoDB est connecté
@@ -122,114 +40,133 @@ const checkTasksForNotification = async () => {
     try {
       isMongoConnected = Todo.db && Todo.db.readyState === 1;
     } catch (error) {
-      console.log('MongoDB non connecté, impossible de vérifier les notifications');
+      console.log('MongoDB non connecté, notification ignorée');
       return;
     }
 
     if (!isMongoConnected) {
-      console.log('MongoDB non connecté, impossible de vérifier les notifications');
+      console.log('Base de données non disponible, notification ignorée');
       return;
     }
 
-    // Récupérer toutes les tâches non complétées avec notifications activées
+    // Récupérer toutes les tâches actives avec notifications activées mais pas encore envoyées
     const todos = await Todo.find({
       completed: false,
       notificationsEnabled: true,
-      notificationSent: false,
-      notificationEmail: { $exists: true, $ne: '' }
+      notificationSent: false
     });
 
-    console.log(`${todos.length} tâches trouvées avec notifications activées`);
+    if (todos.length === 0) {
+      console.log('Aucune tâche avec notification activée');
+      return;
+    }
 
-    let updatedCount = 0;
+    console.log(`Vérification de ${todos.length} tâches pour notifications...`);
     
-    // Vérifier chaque tâche
+    let tasksToNotify = 0;
+
     for (const todo of todos) {
+      // Vérifier si cette tâche devrait être notifiée maintenant
       if (todo.shouldNotify()) {
-        console.log(`Préparation de notification pour la tâche: ${todo.title}`);
-        
-        // Ajouter à la file d'attente de notifications
-        queueNotification(todo);
-        updatedCount++;
+        // Ajouter à la file d'attente de notification
+        if (!notificationQueue.includes(todo._id.toString())) {
+          notificationQueue.push(todo._id.toString());
+          tasksToNotify++;
+        }
       }
     }
-    
-    if (updatedCount > 0) {
-      console.log(`${updatedCount} nouvelles notifications ajoutées à la file d'attente`);
+
+    if (tasksToNotify > 0) {
+      console.log(`${tasksToNotify} tâche(s) ajoutée(s) à la file d'attente de notification`);
+      // Traiter immédiatement la file d'attente
+      await sendPendingNotifications();
+    } else {
+      console.log('Aucune tâche à notifier pour le moment');
     }
-    
-    // Traiter immédiatement les notifications en attente
-    await processNotificationQueue();
-    
   } catch (error) {
     console.error('Erreur lors de la vérification des tâches à notifier:', error);
   }
 };
 
-// Fonction pour tester l'envoi d'une notification immédiatement
-const testNotification = async (todoId, email) => {
-  try {
-    // Vérifier si MongoDB est connecté
-    let isMongoConnected = false;
-    try {
-      isMongoConnected = Todo.db && Todo.db.readyState === 1;
-    } catch (error) {
-      console.log('MongoDB non connecté, impossible d\'envoyer la notification de test');
-      return { success: false, message: 'Base de données non disponible' };
-    }
-
-    if (!isMongoConnected) {
-      return { success: false, message: 'Base de données non disponible' };
-    }
-
-    // Récupérer la tâche
-    const todo = await Todo.findById(todoId);
-    
-    if (!todo) {
-      return { success: false, message: 'Tâche non trouvée' };
-    }
-    
-    // Utiliser l'email fourni ou celui de la tâche
-    const testEmail = email || todo.notificationEmail;
-    
-    if (!testEmail) {
-      return { success: false, message: 'Adresse email non spécifiée' };
-    }
-    
-    // Créer une copie de la tâche avec l'email de test
-    const testTodo = { ...todo.toObject(), notificationEmail: testEmail };
-    
-    // Envoyer l'email de test
-    const emailSent = await emailService.sendTaskNotification(testTodo);
-    
-    if (emailSent) {
-      return { success: true, message: 'Email de test envoyé avec succès' };
-    } else {
-      return { success: false, message: 'Échec de l\'envoi de l\'email de test' };
-    }
-  } catch (error) {
-    console.error('Erreur lors de l\'envoi de la notification de test:', error);
-    return { success: false, message: 'Erreur lors de l\'envoi de la notification de test' };
+// Traiter les notifications en attente
+const sendPendingNotifications = async () => {
+  if (notificationQueue.length === 0) {
+    return;
   }
+  
+  console.log(`Traitement de ${notificationQueue.length} notification(s) en attente...`);
+  
+  const promises = notificationQueue.map(async (todoId) => {
+    try {
+      let todo = null;
+      
+      // Tenter de récupérer la tâche de MongoDB
+      if (Todo.db && Todo.db.readyState === 1) {
+        todo = await Todo.findById(todoId);
+      }
+      
+      if (!todo) {
+        console.log(`Tâche ${todoId} non trouvée, suppression de la file d'attente`);
+        return { id: todoId, success: false };
+      }
+      
+      // Vérifier si la notification doit être envoyée
+      if (!todo.notificationsEnabled || todo.notificationSent || todo.completed) {
+        console.log(`Tâche ${todoId} ne nécessite plus de notification`);
+        return { id: todoId, success: false };
+      }
+      
+      // Envoyer la notification
+      const result = await emailService.sendTaskNotification(todo);
+      
+      if (result.success) {
+        // Si l'envoi a réussi, mettre à jour la tâche
+        todo.notificationSent = true;
+        await todo.save();
+        
+        console.log(`Notification envoyée avec succès pour la tâche "${todo.title}"`);
+        return { id: todoId, success: true };
+      } else {
+        console.error(`Échec d'envoi de notification pour ${todoId}: ${result.message}`);
+        return { id: todoId, success: false };
+      }
+    } catch (error) {
+      console.error(`Erreur lors du traitement de la notification ${todoId}:`, error);
+      return { id: todoId, success: false };
+    }
+  });
+  
+  const results = await Promise.all(promises);
+  
+  // Supprimer les notifications envoyées avec succès de la file d'attente
+  const successIds = results.filter(r => r.success).map(r => r.id);
+  notificationQueue = notificationQueue.filter(id => !successIds.includes(id));
+  
+  console.log(`${successIds.length} notification(s) traitée(s) avec succès, ${notificationQueue.length} notification(s) restante(s)`);
 };
 
-// Obtenir des statistiques sur le service de notification
+// Obtenir les statistiques du service de notification
 const getNotificationStats = () => {
   return {
     isRunning,
-    queueLength: notificationQueue.length,
     lastCheck: lastNotificationCheck,
-    queuedTasks: notificationQueue.map(item => ({
-      title: item.title,
-      attempts: item.attempts,
-      lastAttempt: item.lastAttempt
-    }))
+    pendingNotifications: notificationQueue.length
   };
+};
+
+// Fonction pour tester l'envoi d'une notification
+const testNotification = async (todoId, email) => {
+  try {
+    return await emailService.testNotification(todoId, email);
+  } catch (error) {
+    console.error('Erreur lors du test de notification:', error);
+    return { success: false, message: 'Erreur lors de l\'envoi de la notification de test' };
+  }
 };
 
 module.exports = {
   initNotificationService,
   checkTasksForNotification,
-  testNotification,
-  getNotificationStats
+  getNotificationStats,
+  testNotification
 }; 

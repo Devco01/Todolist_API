@@ -22,7 +22,7 @@
         </div>
         <div class="header-actions">
           <button @click="showEmailConfigModal = true" class="config-email-btn">
-            ✉️ Configuration Email
+            ✉️ Tester Notifications
           </button>
         </div>
       </div>
@@ -265,92 +265,27 @@
     <!-- Modal de configuration email -->
     <div v-if="showEmailConfigModal" class="modal-overlay" @click="showEmailConfigModal = false">
       <div class="modal-content email-config-modal" @click.stop>
-        <h2 class="modal-title">Configuration Email</h2>
-        <p class="modal-subtitle">Configurez votre serveur d'envoi d'emails pour les notifications</p>
+        <h2 class="modal-title">Notification par Email</h2>
+        <p class="modal-subtitle">Testez l'envoi de notifications par email</p>
         
-        <form @submit.prevent="saveEmailConfig" class="email-config-form">
+        <form @submit.prevent="sendTestEmail" class="email-config-form">
           <div class="form-group">
-            <label for="config-email">Adresse Email</label>
+            <label for="test-email">Votre adresse email</label>
             <input 
-              id="config-email" 
-              v-model="emailConfig.email" 
+              id="test-email" 
+              v-model="testEmailAddress" 
               type="email" 
               class="form-control" 
               placeholder="votre@email.com"
               required
             >
-          </div>
-          
-          <div class="form-group">
-            <label for="config-password">Mot de passe</label>
-            <input 
-              id="config-password" 
-              v-model="emailConfig.password" 
-              type="password" 
-              class="form-control" 
-              placeholder="Mot de passe ou mot de passe d'application"
-              required
-            >
-            <p class="helper-text">Pour Gmail, utilisez un mot de passe d'application.</p>
-          </div>
-          
-          <div class="form-row">
-            <div class="form-group">
-              <label for="config-host">Serveur SMTP</label>
-              <select id="config-host" v-model="emailConfig.host" class="form-control">
-                <option value="smtp.gmail.com">Gmail</option>
-                <option value="smtp-mail.outlook.com">Outlook</option>
-                <option value="smtp.mail.yahoo.com">Yahoo</option>
-                <option value="custom">Personnalisé</option>
-              </select>
-            </div>
-            
-            <div class="form-group" v-if="emailConfig.host === 'custom'">
-              <label for="config-custom-host">Serveur personnalisé</label>
-              <input 
-                id="config-custom-host" 
-                v-model="emailConfig.customHost" 
-                type="text" 
-                class="form-control" 
-                placeholder="smtp.votre-serveur.com"
-              >
-            </div>
-            
-            <div class="form-group">
-              <label for="config-port">Port</label>
-              <select id="config-port" v-model="emailConfig.port" class="form-control">
-                <option value="587">587 (TLS)</option>
-                <option value="465">465 (SSL)</option>
-                <option value="25">25</option>
-              </select>
-            </div>
-          </div>
-          
-          <div class="form-group">
-            <label for="test-email">Email de test</label>
-            <div class="input-group">
-              <input 
-                id="test-email" 
-                v-model="testEmailAddress" 
-                type="email" 
-                class="form-control" 
-                placeholder="email@pour-tester.com"
-              >
-              <button 
-                type="button" 
-                @click="sendTestEmail" 
-                class="test-email-btn" 
-                :disabled="!testEmailAddress || testingEmail"
-              >
-                {{ testingEmail ? 'Envoi...' : 'Tester' }}
-              </button>
-            </div>
+            <p class="helper-text">L'application ouvrira votre client email pour envoyer un test.</p>
           </div>
           
           <div class="modal-actions">
-            <button type="button" @click="showEmailConfigModal = false" class="cancel-btn">Annuler</button>
-            <button type="submit" class="save-btn" :disabled="isSavingConfig">
-              {{ isSavingConfig ? 'Enregistrement...' : 'Enregistrer' }}
+            <button type="button" @click="showEmailConfigModal = false" class="cancel-btn">Fermer</button>
+            <button type="submit" class="test-email-btn" :disabled="!testEmailAddress || testingEmail">
+              {{ testingEmail ? 'Préparation...' : 'Tester' }}
             </button>
           </div>
         </form>
