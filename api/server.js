@@ -28,6 +28,10 @@ app.use((req, res, next) => {
   next();
 });
 
+// Stocker l'application dans une variable globale
+// Utile pour les fonctions qui ont besoin d'accéder à l'application
+global.app = app;
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Server error:', err.stack);
@@ -40,12 +44,15 @@ app.use((err, req, res, next) => {
 // Routes
 app.use('/api/todos', require('./routes/todoRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));
+app.use('/api/keep-alive', require('./routes/keepAliveRoutes'));
 
 // Health check
 app.get('/api/health', (req, res) => {
   res.status(200).json({ 
     status: 'ok',
-    mongoConnected: res.locals.isMongoConnected
+    mongoConnected: res.locals.isMongoConnected,
+    timestamp: new Date().toISOString(),
+    vercel: process.env.VERCEL === '1'
   });
 });
 
@@ -56,8 +63,35 @@ app.get('/api/system-info', (req, res) => {
     nodeVersion: process.version,
     environment: process.env.NODE_ENV || 'development',
     mongoConnected: res.locals.isMongoConnected,
-    uptime: Math.floor(process.uptime())
+    uptime: Math.floor(process.uptime()),
+    timestamp: new Date().toISOString(),
+    vercel: process.env.VERCEL === '1'
   });
+});
+
+// Endpoint pour le cron de Vercel - permet de vérifier les notifications
+// Cette route est appelée par le cron défini dans vercel.json
+app.get('/api/cron/check-notifications', async (req, res) => {
+  try {
+    console.log('Cron API: Vérification des notifications déclenchée');
+    await notificationService.checkTasksForNotification();
+    await notificationService.sendPendingNotifications();
+    
+    res.status(200).json({
+      success: true,
+      message: 'Vérification des notifications terminée avec succès',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Erreur lors de la vérification des notifications via cron API:', error);
+    
+    // Même en cas d'erreur, retourner 200 pour que Vercel ne considère pas le cron comme échoué
+    res.status(200).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // 404 handler
@@ -66,6 +100,7 @@ app.use((req, res) => {
 });
 
 // Initialiser le service de notification
+// Sur Vercel, le service sera activé mais le cron est géré par Vercel
 if (process.env.NODE_ENV !== 'test') {
   notificationService.initNotificationService();
 }

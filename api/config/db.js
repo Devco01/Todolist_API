@@ -1,164 +1,95 @@
 const mongoose = require('mongoose');
-const dotenv = require('dotenv');
-const path = require('path');
 const fs = require('fs');
+const path = require('path');
+const config = require('./config');
 
-// Charger les variables d'environnement
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+// Variable pour stocker l'état de la connexion
+let isConnected = false;
 
-// Chemin vers le fichier de sauvegarde locale
-const LOCAL_DB_BACKUP_PATH = path.resolve(__dirname, '../data/todos-backup.json');
-
-// S'assurer que le répertoire data existe
-const ensureDataDirExists = () => {
-  // Vérifier si on est dans un environnement Vercel
-  const isVercel = process.env.VERCEL === '1';
-  
-  // Si on est sur Vercel, ne pas tenter de créer le répertoire
-  if (isVercel) {
-    console.log('Environnement Vercel détecté, utilisation du stockage en mémoire uniquement');
-    return false;
-  }
-  
+// Connexion à MongoDB
+const connectDB = async () => {
   try {
-    const dataDir = path.resolve(__dirname, '../data');
+    if (isConnected) {
+      console.log('Utilisation de la connexion MongoDB existante');
+      return;
+    }
+
+    // Utiliser l'URI de connexion provenant de la configuration
+    const conn = await mongoose.connect(config.db.uri, config.db.options);
+
+    console.log(`MongoDB connecté: ${conn.connection.host}`);
+    isConnected = true;
+    
+    // Mettre à jour la variable globale dans l'application
+    if (global.app) {
+      global.app.set('isMongoConnected', true);
+    }
+    
+    return conn;
+  } catch (error) {
+    console.error(`Erreur de connexion à MongoDB: ${error.message}`);
+    isConnected = false;
+    
+    // Mettre à jour la variable globale dans l'application
+    if (global.app) {
+      global.app.set('isMongoConnected', false);
+    }
+    
+    // Ne pas faire échouer l'application, mais retourner l'erreur
+    return { error };
+  }
+};
+
+// Fonction pour sauvegarder en tant que fichier JSON (solution de secours)
+const saveBackupTodos = async (todos) => {
+  try {
+    const dataDir = path.join(__dirname, '../data');
+    
+    // Créer le répertoire data s'il n'existe pas
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
     }
+    
+    const filePath = path.join(dataDir, 'todos-backup.json');
+    fs.writeFileSync(filePath, JSON.stringify(todos, null, 2));
+    console.log(`Sauvegarde de ${todos.length} tâches dans ${filePath}`);
     return true;
   } catch (error) {
-    console.error('Impossible de créer le répertoire de données:', error);
+    console.error('Erreur lors de la sauvegarde des tâches:', error);
     return false;
   }
 };
 
-// Charger les todos sauvegardés localement
-const loadBackupTodos = () => {
-  // Vérifier si on est dans un environnement Vercel
-  const isVercel = process.env.VERCEL === '1';
-  if (isVercel) {
-    console.log('Environnement Vercel détecté, pas de chargement local');
-    return [];
-  }
-  
-  // Tenter de créer le répertoire si nécessaire
-  const dirExists = ensureDataDirExists();
-  if (!dirExists) {
-    console.warn('Impossible d\'accéder au stockage local, utilisation d\'un tableau vide');
-    return [];
-  }
-  
-  // Charger depuis le fichier local si possible
-  if (fs.existsSync(LOCAL_DB_BACKUP_PATH)) {
-    try {
-      const data = fs.readFileSync(LOCAL_DB_BACKUP_PATH, 'utf8');
-      return JSON.parse(data);
-    } catch (error) {
-      console.error('Erreur lors du chargement des todos de sauvegarde:', error);
+// Fonction pour charger depuis un fichier JSON (solution de secours)
+const loadBackupTodos = async () => {
+  try {
+    const filePath = path.join(__dirname, '../data/todos-backup.json');
+    
+    if (!fs.existsSync(filePath)) {
       return [];
     }
-  }
-  return [];
-};
-
-// Sauvegarder les todos localement
-const saveBackupTodos = (todos) => {
-  // Vérifier si on est dans un environnement Vercel
-  const isVercel = process.env.VERCEL === '1';
-  if (isVercel) {
-    console.log('Environnement Vercel détecté, pas de sauvegarde locale');
-    return false;
-  }
-  
-  // Tenter de créer le répertoire si nécessaire
-  const dirExists = ensureDataDirExists();
-  if (!dirExists) {
-    console.warn('Impossible d\'accéder au stockage local, sauvegarde ignorée');
-    return false;
-  }
-  
-  // Sauvegarder dans le fichier local
-  try {
-    fs.writeFileSync(LOCAL_DB_BACKUP_PATH, JSON.stringify(todos, null, 2), 'utf8');
-    console.log('Todos sauvegardés localement avec succès');
-    return true;
+    
+    const data = fs.readFileSync(filePath, 'utf8');
+    const todos = JSON.parse(data);
+    console.log(`Chargement de ${todos.length} tâches depuis ${filePath}`);
+    return todos;
   } catch (error) {
-    console.error('Erreur lors de la sauvegarde locale des todos:', error);
-    return false;
+    console.error('Erreur lors du chargement des tâches:', error);
+    return [];
   }
 };
 
-const connectDB = async () => {
-  try {
-    // Vérifier si nous sommes sur Vercel
-    const isVercel = process.env.VERCEL === '1';
-    
-    if (!process.env.MONGODB_URI) {
-      console.warn('La variable d\'environnement MONGODB_URI n\'est pas définie. Fonctionnement en mode local sans base de données.');
-      return null;
-    }
-    
-    console.log('Tentative de connexion à MongoDB...');
-    
-    const conn = await mongoose.connect(process.env.MONGODB_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      serverSelectionTimeoutMS: isVercel ? 60000 : 10000, // Timeout plus long sur Vercel
-      retryWrites: true,
-      socketTimeoutMS: 45000, // Éviter les timeouts de socket
-      heartbeatFrequencyMS: 10000, // Vérifier la connexion plus fréquemment
-      keepAlive: true,
-      keepAliveInitialDelay: 300000, // 5 minutes
-      autoIndex: false // Désactiver les index automatiques pour de meilleures performances
-    });
-    
-    console.log(`MongoDB Connected: ${conn.connection.host}`);
-    return conn;
-  } catch (error) {
-    console.error('MongoDB connection error:', error);
-    console.log('Application fonctionnant en mode local sans base de données.');
-    
-    // Sur Vercel, ne pas bloquer le déploiement en cas d'erreur de connexion
-    if (process.env.VERCEL === '1') {
-      console.log('Déploiement sur Vercel, continuant sans base de données.');
-    }
-    
-    return null;
-  }
+// Vérifier l'état de la connexion MongoDB
+const checkConnection = () => {
+  return {
+    isConnected: mongoose.connection.readyState === 1,
+    state: mongoose.connection.readyState
+  };
 };
-
-// Gérer les erreurs de connexion
-mongoose.connection.on('error', err => {
-  console.error('MongoDB error:', err);
-});
-
-mongoose.connection.on('disconnected', () => {
-  console.log('MongoDB disconnected');
-});
-
-// Reconnexion automatique en cas de déconnexion
-mongoose.connection.on('disconnected', () => {
-  console.log('Tentative de reconnexion à MongoDB...');
-  setTimeout(() => {
-    connectDB();
-  }, 5000); // Attendre 5 secondes avant de tenter de se reconnecter
-});
-
-// Gérer la fermeture propre de la connexion lors de l'arrêt de l'application
-process.on('SIGINT', async () => {
-  try {
-    if (mongoose.connection.readyState === 1) {
-      await mongoose.connection.close();
-      console.log('MongoDB connection closed due to app termination');
-    }
-  } catch (err) {
-    console.error('Error closing MongoDB connection:', err);
-  }
-  process.exit(0);
-});
 
 module.exports = {
   connectDB,
+  saveBackupTodos,
   loadBackupTodos,
-  saveBackupTodos
+  checkConnection
 }; 

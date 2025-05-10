@@ -32,5 +32,11 @@
   "env": {
     "NODE_ENV": "production"
   },
-  "outputDirectory": "dist"
+  "outputDirectory": "dist",
+  "crons": [
+    {
+      "path": "/api/cron/check-notifications",
+      "schedule": "*/5 * * * *"
+    }
+  ]
 } 
