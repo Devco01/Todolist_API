@@ -150,6 +150,35 @@ instance.interceptors.response.use(
       });
     }
     
+    // Gérer spécifiquement les erreurs 404 pour les tâches qui existent en localStorage mais pas en BD
+    if (error.response && error.response.status === 404 && error.config.url.includes('/todos/')) {
+      console.warn('[AXIOS] Tâche non trouvée en BD mais peut exister en localStorage, tentative de fallback');
+      
+      // Récupérer l'ID de la tâche
+      const id = error.config.url.split('/').pop();
+      
+      // Récupérer les todos du localStorage
+      let localTodos = JSON.parse(localStorage.getItem('todos') || '[]');
+      
+      // Vérifier si la tâche existe en localStorage
+      const method = error.config.method;
+      
+      if (method === 'delete') {
+        // Pour la suppression, filtrer la tâche du localStorage
+        const todoExists = localTodos.some(t => t._id === id || t.id === id);
+        
+        if (todoExists) {
+          console.log('[AXIOS] Tâche trouvée en localStorage, suppression locale uniquement');
+          localTodos = localTodos.filter(t => t._id !== id && t.id !== id);
+          localStorage.setItem('todos', JSON.stringify(localTodos));
+          return Promise.resolve({ data: { success: true, message: 'Tâche supprimée localement' } });
+        }
+      }
+      
+      // Pour les autres méthodes ou si la tâche n'existe pas en localStorage
+      // On continue avec le rejet normal
+    }
+    
     // Pour les autres types d'erreurs, les remonter avec plus d'infos
     console.error(`Erreur API: ${error.response?.status} ${error.response?.statusText || error.message}`);
     return Promise.reject(error);
