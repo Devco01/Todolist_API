@@ -37,6 +37,7 @@ export default {
     // Cacher automatiquement la notification après 3 secondes
     let notificationTimeout = null;
     let syncInterval = null;
+    let emergencySyncInProgress = false;
     
     const clearNotification = () => {
       if (notificationTimeout) {
@@ -72,38 +73,8 @@ export default {
       }
     };
     
-    // Gestionnaire d'événement pour la reprise d'activité après veille
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        console.log('Application de nouveau visible - Synchronisation des tâches');
-        syncTodos();
-      }
-    };
-    
-    // Fonction spéciale pour forcer la sauvegarde des tâches existantes
-    const forceSaveTodos = () => {
-      const todos = store.state.todos;
-      if (Array.isArray(todos) && todos.length > 0) {
-        console.log('[DEBUG] Force sauvegarde des tâches existantes:', todos.length);
-        
-        // Sauvegarder directement dans localStorage
-        try {
-          const jsonData = JSON.stringify(todos);
-          localStorage.setItem('todos', jsonData);
-          console.log('[DEBUG] Force sauvegarde réussie');
-          
-          // Vérifier
-          const saved = localStorage.getItem('todos');
-          console.log('[DEBUG] Vérification après force sauvegarde:', 
-            saved ? `${saved.length} caractères` : 'Échec');
-        } catch (e) {
-          console.error('[DEBUG] Erreur lors de la force sauvegarde:', e);
-        }
-      }
-    };
-    
     // Nouvelle fonction de synchronisation d'urgence qui évite l'erreur 405
-    async emergencySync() {
+    const emergencySync = async () => {
       if (store.state.emergencySyncInProgress) {
         console.log('[DEBUG] Synchronisation d\'urgence déjà en cours, ignorée');
         return;
@@ -146,6 +117,36 @@ export default {
       store.commit('SET_EMERGENCY_SYNC_IN_PROGRESS', false);
     };
     
+    // Gestionnaire d'événement pour la reprise d'activité après veille
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log('Application de nouveau visible - Synchronisation des tâches');
+        syncTodos();
+      }
+    };
+    
+    // Fonction spéciale pour forcer la sauvegarde des tâches existantes
+    const forceSaveTodos = () => {
+      const todos = store.state.todos;
+      if (Array.isArray(todos) && todos.length > 0) {
+        console.log('[DEBUG] Force sauvegarde des tâches existantes:', todos.length);
+        
+        // Sauvegarder directement dans localStorage
+        try {
+          const jsonData = JSON.stringify(todos);
+          localStorage.setItem('todos', jsonData);
+          console.log('[DEBUG] Force sauvegarde réussie');
+          
+          // Vérifier
+          const saved = localStorage.getItem('todos');
+          console.log('[DEBUG] Vérification après force sauvegarde:', 
+            saved ? `${saved.length} caractères` : 'Échec');
+        } catch (e) {
+          console.error('[DEBUG] Erreur lors de la force sauvegarde:', e);
+        }
+      }
+    };
+    
     // Fonction pour récupérer l'utilisateur si les informations sont perdues
     const recoverUserIfNeeded = async () => {
       try {
@@ -169,8 +170,12 @@ export default {
           try {
             const response = await axios.get('/auth/me', {
               transformResponse: [data => {
-                const parsedData = JSON.parse(data);
-                return parsedData;
+                try {
+                  return JSON.parse(data);
+                } catch (error) {
+                  console.error('[DEBUG] Erreur de parsing JSON dans transformResponse:', error);
+                  return { error: 'Réponse invalide' };
+                }
               }],
               validateStatus: status => status < 500 // Accepter les codes 2xx-4xx
             });
@@ -193,6 +198,25 @@ export default {
               
               // Session est valide, continuer
               console.log('[DEBUG] Récupération session réussie ✓');
+              
+              // Vérification proactive des données dans localStorage
+              const todosData = localStorage.getItem('todos');
+              console.log('[DEBUG] Données trouvées dans localStorage au démarrage', todosData ? `(${todosData.length} caractères)` : '(aucune)');
+              
+              if (todosData && todosData.length > 10) {
+                const parsedTodos = JSON.parse(todosData);
+                console.log('[DEBUG] CHARGEMENT CRITIQUE:', parsedTodos.length, 'tâches trouvées dans localStorage');
+                store.commit('SET_TODOS', parsedTodos);
+              }
+              
+              // Exécuter la synchronisation d'urgence après un court délai
+              setTimeout(() => {
+                if (store.state.todos.length > 0) {
+                  console.log('[DEBUG] Synchronisation d\'urgence de', store.state.todos.length, 'tâches...');
+                  emergencySync();
+                }
+              }, 3000);
+              
               return true;
             } else {
               console.log('[DEBUG] Échec de la récupération de session, réponse invalide:', response.status);
@@ -210,23 +234,26 @@ export default {
               console.error('[DEBUG] Autre type d\'erreur lors de la récupération:', error);
             }
             
+            // Si c'est une erreur de parsing JSON, essayons de forcer un ping
+            if (error.name === 'SyntaxError' && error.message.includes('JSON.parse')) {
+              console.log('[DEBUG] Erreur de parsing JSON détectée, tentative de ping');
+              
+              // Envoi d'un ping pour vérifier si le serveur est disponible
+              try {
+                console.log('[DEBUG] Envoi d\'un ping pour maintenir la session active...');
+                await axios.get('/keep-alive');
+                console.log('[DEBUG] Ping réussi, session maintenue active');
+                
+                // Si le ping réussit, tenter de charger les tâches quand même
+                const todoResult = await store.dispatch('fetchTodos');
+                console.log('[DEBUG] Résultat de la récupération des tâches après ping:', todoResult);
+              } catch (pingError) {
+                console.error('[DEBUG] Erreur lors du ping:', pingError);
+              }
+            }
+            
             return false;
           }
-          
-          // Tentative de récupération des informations utilisateur
-          await store.dispatch('checkAuth');
-          
-          console.log('[DEBUG] Récupération session:', 
-            store.state.isAuthenticated ? 'Réussie ✓' : 'Échec ✗',
-            'User ID:', store.state.user?.id || 'Non disponible');
-            
-          // Si la session est récupérée, lancer immédiatement la récupération des tâches
-          if (store.state.isAuthenticated && store.state.user) {
-            console.log('[DEBUG] Session restaurée, chargement des tâches associées');
-            await store.dispatch('fetchTodos');
-          }
-          
-          return store.state.isAuthenticated;
         }
         
         return false;
