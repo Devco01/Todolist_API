@@ -52,6 +52,20 @@ const protect = async (req, res, next) => {
       // Vérifier si c'est une requête concernant des todos ou des notifications
       // Dans ce cas, on permet la requête pour éviter les problèmes lors des modifications de données
       if (req.originalUrl.includes('/todos') || req.originalUrl.includes('/notifications')) {
+        console.log('[AUTH-MIDDLEWARE] Route de données détectée, mais l\'utilisateur n\'existe plus');
+        
+        // S'il s'agit d'une opération de création ou de modification, on doit bloquer
+        if (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH') {
+          console.log('[AUTH-MIDDLEWARE] Opération de création/modification bloquée - utilisateur non trouvé');
+          return res.status(401).json({
+            success: false,
+            message: 'Votre compte utilisateur semble ne plus exister. Veuillez vous reconnecter.',
+            details: 'user_not_found',
+            forceLogout: true
+          });
+        }
+        
+        // Pour les autres méthodes (GET, DELETE), on peut permettre le mode dégradé
         console.log('[AUTH-MIDDLEWARE] Route de données détectée, passage en mode dégradé pour permettre la modification');
         // Créer un utilisateur temporaire basé sur le token décodé
         req.user = {
@@ -70,7 +84,9 @@ const protect = async (req, res, next) => {
       
       return res.status(401).json({
         success: false,
-        message: 'Utilisateur non trouvé'
+        message: 'Utilisateur non trouvé',
+        details: 'user_not_found',
+        forceLogout: true
       });
     }
     

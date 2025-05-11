@@ -119,6 +119,45 @@ instance.interceptors.response.use(
       // Vérifier si l'erreur vient d'une route autre que l'authentification ou la modification de données
       const url = error.config?.url || '';
       
+      // Détecter si l'utilisateur n'existe plus
+      const userNotFound = error.response.data?.details === 'user_not_found' || 
+                          error.response.data?.forceLogout === true;
+      
+      // Si l'utilisateur n'existe plus, on force la déconnexion
+      if (userNotFound) {
+        console.warn('[AXIOS] Utilisateur non trouvé dans la base de données - forcer la déconnexion');
+        
+        // Nettoyer les données d'authentification
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('user');
+        
+        // Afficher un message à l'utilisateur
+        if (window.dispatchEvent) {
+          try {
+            window.dispatchEvent(new CustomEvent('force-logout', { 
+              detail: { 
+                message: 'Votre compte utilisateur semble ne plus exister. Veuillez vous reconnecter.',
+                reason: 'user_not_found'
+              } 
+            }));
+          } catch (e) {
+            console.error('[AXIOS] Erreur lors du dispatch d\'événement:', e);
+          }
+        }
+        
+        // Rediriger vers la page de connexion
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login?error=session_expired';
+        }
+        
+        return Promise.reject({
+          ...error,
+          handled: true,
+          forced_logout: true,
+          message: 'Session invalide - utilisateur non trouvé'
+        });
+      }
+      
       // Mettre à jour la liste des routes sécurisées pour inclure tous les endpoints de modification
       const isSafeRoute = 
         url.includes('/todos') || 
