@@ -107,6 +107,9 @@ app.get('/api/cron/check-notifications', async (req, res) => {
   }
 });
 
+// Endpoint pour le cron de Vercel spécifique à PostgreSQL
+app.get('/api/cron/check-notifications-pg', require('./cron/check-notifications-pg'));
+
 // Ajouter une route pour la racine - utile pour Vercel et pour tester que l'API fonctionne
 app.get('/', (req, res) => {
   res.status(200).json({
@@ -127,69 +130,124 @@ app.get('/', (req, res) => {
   });
 });
 
-// Route de diagnostic pour PostgreSQL
-app.get('/api/debug-postgres', async (req, res) => {
+// Route de diagnostic avancée pour PostgreSQL
+app.get('/api/debug-postgres-advanced', async (req, res) => {
   try {
     const postgresUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL;
     
-    res.json({
-      urlConfigured: !!postgresUrl,
+    // Masquer les informations sensibles pour l'affichage
+    const maskedUrl = postgresUrl 
+      ? postgresUrl.replace(/\/\/([^:]+):([^@]+)@/, '//***:***@') 
+      : null;
+    
+    // Informations sur la configuration
+    const configInfo = {
+      urlProvided: !!postgresUrl,
       urlLength: postgresUrl ? postgresUrl.length : 0,
+      maskedUrl: maskedUrl,
       env: process.env.NODE_ENV,
-      timestamp: new Date().toISOString(),
-      message: "Cette route permet de vérifier la configuration PostgreSQL"
-    });
+      isVercel: process.env.VERCEL === '1',
+      timestamp: new Date().toISOString()
+    };
     
-    console.log('DIAG: Route de diagnostic PostgreSQL appelée');
-    console.log('DIAG: URL PostgreSQL configurée:', !!postgresUrl);
+    let responseData = { ...configInfo };
     
-    // Tenter une connexion
+    // Tentative de connexion avec capture de la trace complète
     try {
-      const connection = await connectPostgres();
-      const isConnected = !!connection;
+      console.log('[ADVANCED-DIAG] Tentative de connexion PostgreSQL avec URL:', maskedUrl);
       
-      console.log('DIAG: Tentative de connexion PostgreSQL:', isConnected ? 'Réussie' : 'Échouée');
+      // Délai expiré après 10 secondes
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Délai de connexion expiré (10s)')), 10000);
+      });
+      
+      // Tentative de connexion avec timeout
+      const connection = await Promise.race([
+        connectPostgres(),
+        timeoutPromise
+      ]);
+      
+      const isConnected = !!connection;
+      console.log('[ADVANCED-DIAG] Tentative de connexion PostgreSQL:', isConnected ? 'Réussie' : 'Échouée');
       
       if (isConnected) {
-        res.json({
-          urlConfigured: !!postgresUrl,
-          urlLength: postgresUrl ? postgresUrl.length : 0,
-          connectionSuccess: true,
-          env: process.env.NODE_ENV,
-          timestamp: new Date().toISOString(),
-          message: "Connexion PostgreSQL réussie"
-        });
+        // Tester la connexion en exécutant une requête simple
+        try {
+          const testQuery = await connection.query('SELECT NOW() as current_time');
+          const currentTime = testQuery?.rows?.[0]?.current_time || 'Unknown';
+          
+          responseData = {
+            ...responseData,
+            connectionSuccess: true,
+            dbServerTime: currentTime,
+            message: "Connexion PostgreSQL réussie avec requête test"
+          };
+        } catch (queryError) {
+          responseData = {
+            ...responseData,
+            connectionSuccess: true,
+            connectionQueryError: queryError.message,
+            message: "Connexion établie mais erreur lors de la requête test"
+          };
+        }
       } else {
-        res.json({
-          urlConfigured: !!postgresUrl,
-          urlLength: postgresUrl ? postgresUrl.length : 0,
+        responseData = {
+          ...responseData,
           connectionSuccess: false,
-          env: process.env.NODE_ENV,
-          timestamp: new Date().toISOString(),
-          message: "Échec de connexion PostgreSQL, mais sans erreur"
-        });
+          message: "Échec de connexion PostgreSQL, mais sans erreur spécifique"
+        };
       }
     } catch (connectionError) {
-      console.error('DIAG: Erreur de connexion PostgreSQL:', connectionError.message);
+      console.error('[ADVANCED-DIAG] Erreur de connexion PostgreSQL:', connectionError);
       
-      res.status(500).json({
-        urlConfigured: !!postgresUrl,
-        urlLength: postgresUrl ? postgresUrl.length : 0,
+      // Analyser l'erreur pour des cas spécifiques
+      let errorType = "unknown";
+      let suggestion = "";
+      
+      const errorMsg = connectionError.message || '';
+      
+      if (errorMsg.includes('getaddrinfo ENOTFOUND')) {
+        errorType = "host_not_found";
+        suggestion = "L'hôte de la base de données n'a pas pu être résolu. Vérifiez l'URL.";
+      } else if (errorMsg.includes('password authentication failed')) {
+        errorType = "auth_failed";
+        suggestion = "Échec d'authentification. Vérifiez les identifiants.";
+      } else if (errorMsg.includes('Connection terminated')) {
+        errorType = "connection_terminated";
+        suggestion = "La connexion a été interrompue. Vérifiez le pare-feu/réseau.";
+      } else if (errorMsg.includes('connect ETIMEDOUT')) {
+        errorType = "timeout";
+        suggestion = "Délai d'attente dépassé. Vérifiez l'accessibilité de la base de données.";
+      } else if (errorMsg.includes('SSL connection')) {
+        errorType = "ssl_error";
+        suggestion = "Problème avec la connexion SSL. Vérifiez les paramètres SSL.";
+      } else if (errorMsg.includes('Please install pg package manually')) {
+        errorType = "missing_dependency";
+        suggestion = "Le package 'pg' nécessaire pour PostgreSQL n'est pas installé. Installez-le avec 'npm install pg'.";
+      }
+      
+      responseData = {
+        ...responseData,
         connectionSuccess: false,
         error: connectionError.message,
-        env: process.env.NODE_ENV,
-        timestamp: new Date().toISOString(),
+        errorType,
+        suggestion,
+        stack: process.env.NODE_ENV === 'production' ? null : connectionError.stack,
         message: "Erreur lors de la connexion PostgreSQL"
-      });
+      };
     }
-  } catch (error) {
-    console.error('DIAG: Erreur dans la route de diagnostic:', error);
     
-    res.status(500).json({
+    // Envoyer une seule réponse à la fin
+    return res.status(responseData.connectionSuccess ? 200 : 500).json(responseData);
+  } catch (error) {
+    console.error('[ADVANCED-DIAG] Erreur dans la route de diagnostic:', error);
+    
+    return res.status(500).json({
       error: error.message,
+      stack: process.env.NODE_ENV === 'production' ? null : error.stack,
       env: process.env.NODE_ENV,
       timestamp: new Date().toISOString(),
-      message: "Erreur lors de l'exécution de la route de diagnostic"
+      message: "Erreur lors de l'exécution de la route de diagnostic avancée"
     });
   }
 });

@@ -7,6 +7,25 @@ let sequelize = null;
 // Fonction pour se connecter à PostgreSQL
 const connectPostgres = async () => {
   try {
+    // Vérifier si le package pg est installé
+    try {
+      require('pg');
+      console.log('Package pg trouvé et chargé avec succès');
+    } catch (pgError) {
+      console.error('Erreur lors du chargement du package pg:', pgError.message);
+      console.error('Tentative d\'installation automatique du package pg...');
+      
+      // Sur Vercel, on ne peut pas installer dynamiquement
+      if (process.env.VERCEL === '1') {
+        console.error('Environnement Vercel détecté. Installation dynamique impossible.');
+        console.error('Veuillez ajouter pg aux dépendances et redéployer l\'application.');
+        return null;
+      }
+      
+      // On pourrait tenter d'installer dynamiquement mais c'est risqué
+      return null;
+    }
+
     // Si déjà connecté, retourner l'instance existante
     if (sequelize) {
       return sequelize;
