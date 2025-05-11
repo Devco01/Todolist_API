@@ -1,11 +1,14 @@
 import { createStore } from 'vuex'
 import axios from '../utils/axios'
 
+// Clé utilisée pour le stockage dans localStorage
+const STORAGE_KEY = 'todos';
+
 // Fonction pour charger les todos du localStorage avec gestion d'erreur améliorée
 const loadTodosFromStorage = () => {
   try {
-    const savedTodos = localStorage.getItem('todos')
-    console.log('Chargement des todos depuis localStorage:', savedTodos ? 'Données trouvées' : 'Aucune donnée')
+    const savedTodos = localStorage.getItem(STORAGE_KEY)
+    console.log('[DEBUG] Chargement des todos depuis localStorage:', savedTodos ? `Données trouvées (${savedTodos.length} caractères)` : 'Aucune donnée')
     
     // Si pas de données, renvoyer un tableau vide
     if (!savedTodos) return []
@@ -15,13 +18,14 @@ const loadTodosFromStorage = () => {
     
     // Vérifier que c'est bien un tableau
     if (Array.isArray(parsedTodos)) {
+      console.log(`[DEBUG] ${parsedTodos.length} todos chargés depuis localStorage`)
       return parsedTodos
     } else {
-      console.error('Format de données invalide dans localStorage:', parsedTodos)
+      console.error('[DEBUG] Format de données invalide dans localStorage:', parsedTodos)
       return []
     }
   } catch (error) {
-    console.error('Erreur lors du chargement des todos depuis localStorage:', error)
+    console.error('[DEBUG] Erreur lors du chargement des todos depuis localStorage:', error)
     return []
   }
 }
@@ -31,16 +35,25 @@ const saveTodosToStorage = (todos) => {
   try {
     // Vérifier que todos est bien un tableau
     if (!Array.isArray(todos)) {
-      console.error('Tentative de sauvegarde de données non valides dans localStorage:', todos)
+      console.error('[DEBUG] Tentative de sauvegarde de données non valides dans localStorage:', todos)
       return false
     }
     
-    // Sauvegarder les données et vérifier le résultat
-    localStorage.setItem('todos', JSON.stringify(todos))
-    console.log(`${todos.length} todos sauvegardés dans localStorage`)
-    return true
+    // Sauvegarder les données
+    const jsonString = JSON.stringify(todos);
+    localStorage.setItem(STORAGE_KEY, jsonString)
+    
+    // Vérifier que les données ont bien été sauvegardées
+    const savedData = localStorage.getItem(STORAGE_KEY);
+    if (savedData === jsonString) {
+      console.log(`[DEBUG] ${todos.length} todos sauvegardés dans localStorage (${jsonString.length} caractères)`)
+      return true
+    } else {
+      console.error('[DEBUG] Problème lors de la sauvegarde dans localStorage - Les données ne correspondent pas')
+      return false
+    }
   } catch (error) {
-    console.error('Erreur lors de la sauvegarde des todos dans localStorage:', error)
+    console.error('[DEBUG] Erreur lors de la sauvegarde des todos dans localStorage:', error)
     return false
   }
 }
@@ -84,27 +97,104 @@ export default createStore({
       state.error = error;
     },
     SET_TODOS(state, todos) {
-      state.todos = Array.isArray(todos) ? todos : [];
-      // Sauvegarder dans le localStorage
-      saveTodosToStorage(state.todos);
+      console.log(`[DEBUG] SET_TODOS: Mise à jour des todos avec ${Array.isArray(todos) ? todos.length : 'non-tableau'} éléments`);
+      
+      // S'assurer que nous avons un tableau valide
+      if (!Array.isArray(todos)) {
+        console.error('[DEBUG] SET_TODOS: Données non valides reçues:', todos);
+        todos = [];
+      }
+      
+      // Sauvegarder dans le state
+      state.todos = todos;
+      
+      // Sauvegarder dans le localStorage et vérifier le résultat
+      const saveSuccess = saveTodosToStorage(state.todos);
+      if (!saveSuccess) {
+        console.error('[DEBUG] SET_TODOS: Échec de la sauvegarde dans localStorage');
+      }
     },
     ADD_TODO(state, todo) {
-      if (!todo) return;
+      console.log('[DEBUG] ADD_TODO:', todo);
       
-      if (!Array.isArray(state.todos)) state.todos = [];
+      if (!todo) {
+        console.error('[DEBUG] ADD_TODO: Tentative d\'ajout d\'une tâche nulle ou undefined');
+        return;
+      }
+      
+      // S'assurer que state.todos est un tableau
+      if (!Array.isArray(state.todos)) {
+        console.error('[DEBUG] ADD_TODO: state.todos n\'est pas un tableau - Réinitialisation');
+        state.todos = [];
+      }
+      
+      // Ajouter la tâche au début du tableau
       state.todos.unshift(todo);
-      // Sauvegarder dans le localStorage
-      saveTodosToStorage(state.todos);
+      
+      // Sauvegarder dans le localStorage et vérifier le résultat
+      const saveSuccess = saveTodosToStorage(state.todos);
+      if (!saveSuccess) {
+        console.error('[DEBUG] ADD_TODO: Échec de la sauvegarde dans localStorage');
+      }
     },
     UPDATE_TODO(state, todo) {
+      console.log('[DEBUG] UPDATE_TODO:', todo);
+      
+      if (!todo) {
+        console.error('[DEBUG] UPDATE_TODO: Tentative de mise à jour d\'une tâche nulle ou undefined');
+        return;
+      }
+      
+      // S'assurer que state.todos est un tableau
+      if (!Array.isArray(state.todos)) {
+        console.error('[DEBUG] UPDATE_TODO: state.todos n\'est pas un tableau - Réinitialisation');
+        state.todos = [];
+        return;
+      }
+      
       // Compatibilité avec MongoDB (_id) et PostgreSQL (id)
       const todoId = todo._id || todo.id;
-      const index = state.todos.findIndex(t => (t._id && t._id === todoId) || (t.id && t.id === todoId));
-      if (index !== -1) state.todos.splice(index, 1, todo);
-      // Sauvegarder dans le localStorage
-      saveTodosToStorage(state.todos);
+      if (!todoId) {
+        console.error('[DEBUG] UPDATE_TODO: La tâche n\'a pas d\'ID valide:', todo);
+        return;
+      }
+      
+      // Trouver l'index de la tâche à mettre à jour
+      const index = state.todos.findIndex(t => 
+        (t._id && t._id === todoId) || (t.id && t.id === todoId)
+      );
+      
+      if (index !== -1) {
+        state.todos.splice(index, 1, todo);
+        console.log(`[DEBUG] UPDATE_TODO: Tâche mise à jour à l'index ${index}`);
+      } else {
+        console.error(`[DEBUG] UPDATE_TODO: Tâche avec ID ${todoId} non trouvée`);
+      }
+      
+      // Sauvegarder dans le localStorage et vérifier le résultat
+      const saveSuccess = saveTodosToStorage(state.todos);
+      if (!saveSuccess) {
+        console.error('[DEBUG] UPDATE_TODO: Échec de la sauvegarde dans localStorage');
+      }
     },
     DELETE_TODO(state, id) {
+      console.log('[DEBUG] DELETE_TODO:', id);
+      
+      if (!id) {
+        console.error('[DEBUG] DELETE_TODO: ID non valide:', id);
+        return;
+      }
+      
+      // S'assurer que state.todos est un tableau
+      if (!Array.isArray(state.todos)) {
+        console.error('[DEBUG] DELETE_TODO: state.todos n\'est pas un tableau - Réinitialisation');
+        state.todos = [];
+        return;
+      }
+      
+      // Compter les éléments avant suppression
+      const countBefore = state.todos.length;
+      
       // On ne garde que les tâches dont ni l'id ni le _id ne correspondent à l'id à supprimer
       state.todos = state.todos.filter(todo => {
         // Si la tâche a un _id, vérifier s'il est différent de l'id à supprimer
@@ -114,8 +204,20 @@ export default createStore({
         // Garder la tâche seulement si les deux identifiants sont différents
         return _idDifferent && idDifferent;
       });
-      // Sauvegarder dans le localStorage
-      saveTodosToStorage(state.todos);
+      
+      // Vérifier si des éléments ont été supprimés
+      const countAfter = state.todos.length;
+      if (countBefore === countAfter) {
+        console.warn(`[DEBUG] DELETE_TODO: Aucune tâche avec ID ${id} n'a été trouvée pour suppression`);
+      } else {
+        console.log(`[DEBUG] DELETE_TODO: ${countBefore - countAfter} tâche(s) supprimée(s)`);
+      }
+      
+      // Sauvegarder dans le localStorage et vérifier le résultat
+      const saveSuccess = saveTodosToStorage(state.todos);
+      if (!saveSuccess) {
+        console.error('[DEBUG] DELETE_TODO: Échec de la sauvegarde dans localStorage');
+      }
     },
     SET_OFFLINE_MODE(state, value) {
       state.isOfflineMode = value;
@@ -125,11 +227,30 @@ export default createStore({
     }
   },
   actions: {
-    async fetchTodos({ commit }) {
+    // Force le chargement des données depuis le localStorage si présent
+    loadFromLocalStorageOnly({ commit }) {
+      console.log('[DEBUG] Chargement de secours depuis localStorage uniquement');
+      const localTodos = loadTodosFromStorage();
+      
+      if (localTodos && localTodos.length > 0) {
+        console.log(`[DEBUG] ${localTodos.length} tâches récupérées depuis localStorage (secours)`);
+        commit('SET_TODOS', localTodos);
+        commit('SET_OFFLINE_MODE', true);
+        commit('SET_NOTIFICATION_STATUS', {
+          success: true,
+          message: 'Données chargées depuis la sauvegarde locale'
+        });
+        return { success: true, data: localTodos, offline: true };
+      } else {
+        console.warn('[DEBUG] Aucune donnée dans localStorage pour le chargement de secours');
+        return { success: false, error: 'Aucune donnée locale disponible' };
+      }
+    },
+    async fetchTodos({ commit, dispatch }) {
       commit('SET_LOADING', true);
       commit('SET_ERROR', null);
       try {
-        console.log('Tentative de récupération des todos depuis le serveur...');
+        console.log('[DEBUG] Tentative de récupération des todos depuis le serveur...');
         const { data } = await axios.get('/todos');
         
         // Vérifier la validité des données reçues
@@ -137,7 +258,7 @@ export default createStore({
           throw new Error('Format de données invalide reçu du serveur');
         }
         
-        console.log(`${data.length} todos récupérés depuis le serveur`);
+        console.log(`[DEBUG] ${data.length} todos récupérés depuis le serveur`);
         commit('SET_TODOS', data);
         commit('SET_OFFLINE_MODE', false);
         
@@ -149,14 +270,14 @@ export default createStore({
         
         return { success: true, data };
       } catch (error) {
-        console.error('Erreur lors de la récupération des todos:', error);
+        console.error('[DEBUG] Erreur lors de la récupération des todos:', error);
         
         const errorMessage = error.response?.data?.error || 'Erreur lors du chargement des tâches';
         commit('SET_ERROR', errorMessage);
         
         // Si pas de réponse du serveur, utiliser le stockage local
         if (!error.response) {
-          console.log('Pas de réponse du serveur, utilisation du stockage local');
+          console.log('[DEBUG] Pas de réponse du serveur, utilisation du stockage local');
           commit('SET_OFFLINE_MODE', true);
           const localTodos = loadTodosFromStorage();
           

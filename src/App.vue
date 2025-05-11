@@ -70,18 +70,51 @@ export default {
     
     // Charger les tâches au démarrage de l'application
     onMounted(async () => {
-      console.log('Application démarrée - Chargement initial des tâches...');
+      console.log('[DEBUG] Application démarrée - Chargement initial des tâches...');
+      
+      // Récupérer d'abord les tâches du localStorage
+      const localTodos = localStorage.getItem('todos');
+      console.log('[DEBUG] Tâches trouvées dans localStorage au démarrage:', localTodos ? 'Oui' : 'Non');
+      
       try {
-        await store.dispatch('fetchTodos');
-        console.log('Chargement initial des tâches terminé');
+        // Essayer de récupérer les données depuis le serveur
+        console.log('[DEBUG] Tentative de récupération des tâches depuis le serveur...');
+        const result = await store.dispatch('fetchTodos');
+        console.log('[DEBUG] Résultat de la récupération des tâches:', result);
         
-        // Configurer la synchronisation périodique (toutes les 10 minutes)
-        syncInterval = setInterval(syncTodos, 10 * 60 * 1000);
+        // Vérifier le chargement
+        const todosCount = store.state.todos.length;
+        console.log(`[DEBUG] Nombre de tâches après chargement: ${todosCount}`);
+        
+        // Si aucune tâche n'a été chargée mais qu'il y en a dans localStorage, charger celles-ci
+        if (todosCount === 0 && localTodos && localTodos.length > 0) {
+          console.log('[DEBUG] Aucune tâche chargée depuis le serveur mais présentes en local, chargement de secours...');
+          await store.dispatch('loadFromLocalStorageOnly');
+        }
+        
+        // Configurer la synchronisation périodique (toutes les 5 minutes)
+        syncInterval = setInterval(syncTodos, 5 * 60 * 1000);
         
         // Ajouter un écouteur d'événement pour détecter la reprise après veille
         document.addEventListener('visibilitychange', handleVisibilityChange);
+        
+        // Ajouter un gestionnaire d'événements pour l'état de connexion
+        window.addEventListener('online', () => {
+          console.log('[DEBUG] Connexion internet rétablie - Synchronisation des tâches');
+          syncTodos();
+        });
       } catch (error) {
-        console.error('Erreur lors du chargement initial des tâches:', error);
+        console.error('[DEBUG] Erreur lors du chargement initial des tâches:', error);
+        
+        // Vérifier l'état actuel des todos
+        const todosCount = store.state.todos.length;
+        console.log(`[DEBUG] État des todos après erreur: ${todosCount} tâches`);
+        
+        // En cas d'échec complet, utiliser le chargement d'urgence depuis localStorage
+        if (todosCount === 0 && localTodos && localTodos.length > 0) {
+          console.log('[DEBUG] Chargement de secours après échec complet...');
+          await store.dispatch('loadFromLocalStorageOnly');
+        }
       }
     });
     
