@@ -355,16 +355,205 @@ const syncTodoModel = async (force = false) => {
 // Variable pour stocker le modèle
 let TodoModel = null;
 
+// Mode mémoire
+let inMemoryTodos = [];
+let isUsingMemoryMode = process.env.USE_MEMORY_MODE === 'true';
+
 // Initialiser et récupérer le modèle
 const getTodoModel = () => {
-  if (!TodoModel) {
-    TodoModel = defineTodoModel();
+  if (TodoModel) {
+    return TodoModel;
   }
+  
+  // Si le mode mémoire est explicitement activé
+  if (isUsingMemoryMode) {
+    console.log('[TODOPG] Mode mémoire activé, utilisation du modèle en mémoire');
+    return getMemoryModel();
+  }
+  
+  TodoModel = defineTodoModel();
+  
+  // Si le modèle n'a pas pu être défini, utiliser le mode mémoire
+  if (!TodoModel) {
+    console.log('[TODOPG] Échec de définition du modèle, utilisation du mode mémoire');
+    isUsingMemoryMode = true;
+    return getMemoryModel();
+  }
+  
   return TodoModel;
+};
+
+// Modèle en mémoire pour les todos
+const getMemoryModel = () => {
+  console.log('[TODOPG] Création du modèle mémoire pour Todo');
+  
+  // Structure du modèle mémoire avec les mêmes méthodes que Sequelize
+  return {
+    isUsingMemoryMode: true,
+    findAll: async (options = {}) => {
+      console.log('[TODOPG-MEMORY] Recherche de todos avec options:', options);
+      
+      // Filtrer les todos selon les critères
+      let todos = [...inMemoryTodos];
+      
+      // Filtrer par utilisateur si spécifié
+      if (options.where && options.where.userId) {
+        todos = todos.filter(todo => todo.userId === options.where.userId);
+      }
+      
+      // Filtrer par complété si spécifié
+      if (options.where && options.where.completed !== undefined) {
+        todos = todos.filter(todo => todo.completed === options.where.completed);
+      }
+      
+      // Tri si spécifié
+      if (options.order && options.order.length > 0) {
+        const [field, direction] = options.order[0];
+        todos.sort((a, b) => {
+          if (direction === 'DESC') {
+            return a[field] > b[field] ? -1 : 1;
+          } else {
+            return a[field] > b[field] ? 1 : -1;
+          }
+        });
+      }
+      
+      return todos;
+    },
+    findByPk: async (id) => {
+      console.log('[TODOPG-MEMORY] Recherche de todo par ID:', id);
+      return inMemoryTodos.find(todo => todo.id === id);
+    },
+    findOne: async (options = {}) => {
+      console.log('[TODOPG-MEMORY] Recherche d\'un todo avec options:', options);
+      
+      if (options.where && options.where.id) {
+        return inMemoryTodos.find(todo => todo.id === options.where.id);
+      }
+      
+      if (options.where && options.where.userId) {
+        return inMemoryTodos.find(todo => todo.userId === options.where.userId);
+      }
+      
+      return null;
+    },
+    create: async (todoData) => {
+      console.log('[TODOPG-MEMORY] Création d\'un todo en mémoire');
+      
+      // Création d'un nouvel ID unique
+      const id = Date.now().toString();
+      
+      // Création du todo avec les valeurs par défaut
+      const newTodo = {
+        id,
+        title: todoData.title || 'Sans titre',
+        description: todoData.description || '',
+        dueDate: todoData.dueDate || null,
+        dueTime: todoData.dueTime || null,
+        category: todoData.category || 'autre',
+        priority: todoData.priority || 'medium',
+        completed: todoData.completed || false,
+        notificationEmail: todoData.notificationEmail || null,
+        notificationsEnabled: todoData.notificationsEnabled || false,
+        notificationSent: todoData.notificationSent || false,
+        userId: todoData.userId || null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        
+        // Méthodes du prototype
+        shouldNotify: function() {
+          if (!this.notificationsEnabled || this.completed) {
+            return false;
+          }
+          
+          if (!this.notificationEmail) {
+            return false;
+          }
+          
+          if (!this.dueDate) {
+            return false;
+          }
+          
+          const now = new Date();
+          const dueDateTime = new Date(`${this.dueDate}T${this.dueTime || '00:00'}:00`);
+          
+          // Ne pas notifier les tâches passées
+          if (dueDateTime < now) {
+            return false;
+          }
+          
+          // Si la notification a déjà été envoyée
+          if (this.notificationSent) {
+            return false;
+          }
+          
+          // Vérifier si la date est aujourd'hui
+          return this.isDateToday(dueDateTime);
+        },
+        isDateToday: function(date) {
+          const today = new Date();
+          return date.getDate() === today.getDate() &&
+                date.getMonth() === today.getMonth() &&
+                date.getFullYear() === today.getFullYear();
+        }
+      };
+      
+      // Ajouter à la liste en mémoire
+      inMemoryTodos.push(newTodo);
+      
+      console.log('[TODOPG-MEMORY] Todo créé avec ID:', id);
+      return newTodo;
+    },
+    update: async (data, options) => {
+      console.log('[TODOPG-MEMORY] Mise à jour d\'un todo avec options:', options);
+      
+      if (!options || !options.where || !options.where.id) {
+        throw new Error('ID de todo non spécifié pour la mise à jour');
+      }
+      
+      const todoId = options.where.id;
+      const todoIndex = inMemoryTodos.findIndex(todo => todo.id === todoId);
+      
+      if (todoIndex === -1) {
+        console.log('[TODOPG-MEMORY] Todo non trouvé pour mise à jour, ID:', todoId);
+        return [0];
+      }
+      
+      // Mettre à jour les champs
+      inMemoryTodos[todoIndex] = {
+        ...inMemoryTodos[todoIndex],
+        ...data,
+        updatedAt: new Date()
+      };
+      
+      console.log('[TODOPG-MEMORY] Todo mis à jour, ID:', todoId);
+      return [1];
+    },
+    destroy: async (options) => {
+      console.log('[TODOPG-MEMORY] Suppression d\'un todo avec options:', options);
+      
+      if (!options || !options.where || !options.where.id) {
+        throw new Error('ID de todo non spécifié pour la suppression');
+      }
+      
+      const todoId = options.where.id;
+      const initialLength = inMemoryTodos.length;
+      
+      inMemoryTodos = inMemoryTodos.filter(todo => todo.id !== todoId);
+      
+      const deletedCount = initialLength - inMemoryTodos.length;
+      console.log('[TODOPG-MEMORY] Todos supprimés:', deletedCount);
+      
+      return deletedCount;
+    }
+  };
 };
 
 module.exports = {
   defineTodoModel,
   syncTodoModel,
-  getTodoModel
+  getTodoModel,
+  // Pour les tests
+  _getInMemoryTodos: () => isUsingMemoryMode ? [...inMemoryTodos] : null,
+  _clearInMemoryTodos: () => { if (isUsingMemoryMode) inMemoryTodos = []; }
 }; 

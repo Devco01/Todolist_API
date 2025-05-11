@@ -6,7 +6,11 @@
       "use": "@vercel/node",
       "config": {
         "maxDuration": 60,
-        "includeFiles": ["node_modules/**"]
+        "includeFiles": [
+          "api/**/*",
+          "node_modules/**",
+          "check-deployment.js"
+        ]
       }
     },
     {
@@ -39,5 +43,6 @@
       "schedule": "0 8 * * *"
     }
   ],
-  "installCommand": "npm install --production"
+  "installCommand": "npm install --production",
+  "buildCommand": "npm run vercel-build"
 } 
