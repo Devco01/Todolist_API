@@ -10,19 +10,40 @@ const loadTodosFromStorage = () => {
     const savedTodos = localStorage.getItem(STORAGE_KEY)
     console.log('[DEBUG] Chargement des todos depuis localStorage:', savedTodos ? `Données trouvées (${savedTodos.length} caractères)` : 'Aucune donnée')
     
+    // Afficher le contenu brut pour diagnostic
+    if (savedTodos) {
+      console.log('[DEBUG] Contenu brut du localStorage:', savedTodos);
+    }
+    
     // Si pas de données, renvoyer un tableau vide
     if (!savedTodos) return []
     
-    // Parser les données JSON
-    const parsedTodos = JSON.parse(savedTodos)
+    // Si les données sont juste "[]", c'est un tableau vide
+    if (savedTodos === '[]') {
+      console.log('[DEBUG] Tableau vide détecté dans localStorage');
+      return [];
+    }
     
-    // Vérifier que c'est bien un tableau
-    if (Array.isArray(parsedTodos)) {
-      console.log(`[DEBUG] ${parsedTodos.length} todos chargés depuis localStorage`)
-      return parsedTodos
-    } else {
-      console.error('[DEBUG] Format de données invalide dans localStorage:', parsedTodos)
-      return []
+    // Parser les données JSON
+    try {
+      const parsedTodos = JSON.parse(savedTodos)
+      
+      // Vérifier que c'est bien un tableau
+      if (Array.isArray(parsedTodos)) {
+        console.log(`[DEBUG] ${parsedTodos.length} todos chargés depuis localStorage`);
+        return parsedTodos
+      } else {
+        console.error('[DEBUG] Format de données invalide dans localStorage (pas un tableau):', parsedTodos);
+        // Essayer de convertir un objet en tableau si possible
+        if (typeof parsedTodos === 'object' && parsedTodos !== null) {
+          console.log('[DEBUG] Tentative de conversion objet -> tableau');
+          return Object.values(parsedTodos);
+        }
+        return []
+      }
+    } catch (parseError) {
+      console.error('[DEBUG] Erreur de parsing JSON:', parseError, 'pour les données:', savedTodos);
+      return [];
     }
   } catch (error) {
     console.error('[DEBUG] Erreur lors du chargement des todos depuis localStorage:', error)
@@ -41,22 +62,56 @@ const saveTodosToStorage = (todos) => {
     
     // Sauvegarder les données
     const jsonString = JSON.stringify(todos);
+    console.log('[DEBUG] Sauvegarde dans localStorage:', jsonString);
     localStorage.setItem(STORAGE_KEY, jsonString)
     
-    // Vérifier que les données ont bien été sauvegardées
+    // Double vérification de la sauvegarde
     const savedData = localStorage.getItem(STORAGE_KEY);
-    if (savedData === jsonString) {
-      console.log(`[DEBUG] ${todos.length} todos sauvegardés dans localStorage (${jsonString.length} caractères)`)
-      return true
-    } else {
-      console.error('[DEBUG] Problème lors de la sauvegarde dans localStorage - Les données ne correspondent pas')
+    if (savedData !== jsonString) {
+      console.error('[DEBUG] Problème lors de la sauvegarde dans localStorage - Les données ne correspondent pas:', 
+        'Sauvegardé:', savedData, 
+        'Original:', jsonString);
       return false
     }
+    
+    console.log(`[DEBUG] ${todos.length} todos sauvegardés dans localStorage (${jsonString.length} caractères)`)
+    return true
   } catch (error) {
     console.error('[DEBUG] Erreur lors de la sauvegarde des todos dans localStorage:', error)
     return false
   }
 }
+
+// *** DIAGNOSTIC DE LANCEMENT ***
+// Vérifier l'état initial du localStorage au chargement du module
+const initialDiagnostic = () => {
+  try {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      keys.push(localStorage.key(i));
+    }
+    console.log('[DIAGNOSTIC] Clés disponibles dans localStorage:', keys);
+    
+    const todosRaw = localStorage.getItem(STORAGE_KEY);
+    console.log('[DIAGNOSTIC] Contenu brut pour la clé todos:', todosRaw);
+    
+    // Tester si une sauvegarde fonctionne
+    const testArray = [{id: 'test', title: 'Test initial'}];
+    const testJson = JSON.stringify(testArray);
+    localStorage.setItem('test_array', testJson);
+    
+    const testResult = localStorage.getItem('test_array');
+    console.log('[DIAGNOSTIC] Test de sauvegarde localStorage:', 
+      testResult === testJson ? 'Succès' : 'Échec',
+      'Original:', testJson,
+      'Récupéré:', testResult);
+  } catch (e) {
+    console.error('[DIAGNOSTIC] Erreur lors du diagnostic initial:', e);
+  }
+};
+
+// Exécuter le diagnostic au chargement
+initialDiagnostic();
 
 export default createStore({
   state: {
@@ -128,14 +183,41 @@ export default createStore({
         state.todos = [];
       }
       
-      // Ajouter la tâche au début du tableau
-      state.todos.unshift(todo);
+      // CORRECTIF : Vérifier si la tâche existe déjà pour éviter les doublons
+      const todoId = todo._id || todo.id;
+      const todoExists = todoId && state.todos.some(t => 
+        (t._id && t._id === todoId) || (t.id && t.id === todoId)
+      );
       
-      // Sauvegarder dans le localStorage et vérifier le résultat
-      const saveSuccess = saveTodosToStorage(state.todos);
-      if (!saveSuccess) {
-        console.error('[DEBUG] ADD_TODO: Échec de la sauvegarde dans localStorage');
+      if (todoExists) {
+        console.warn(`[DEBUG] ADD_TODO: La tâche avec ID ${todoId} existe déjà, mise à jour au lieu d'ajout`);
+        // Utiliser la mutation UPDATE_TODO à la place
+        const index = state.todos.findIndex(t => 
+          (t._id && t._id === todoId) || (t.id && t.id === todoId)
+        );
+        if (index !== -1) {
+          state.todos.splice(index, 1, todo);
+        }
+      } else {
+        // Ajouter la tâche au début du tableau (nouveau comportement)
+        state.todos.unshift(todo);
+        console.log('[DEBUG] ADD_TODO: Nouvelle tâche ajoutée, total:', state.todos.length);
       }
+      
+      // IMPORTANTE SAUVEGARDE SUPPLÉMENTAIRE:
+      // Utiliser window.setTimeout pour s'assurer que la sauvegarde se produit après la mise à jour de l'état
+      window.setTimeout(() => {
+        // Sauvegarder dans le localStorage et vérifier le résultat
+        const saveSuccess = saveTodosToStorage(state.todos);
+        if (!saveSuccess) {
+          console.error('[DEBUG] ADD_TODO: Échec de la sauvegarde dans localStorage - Tentative de secours');
+          // Tentative de secours: réessayer avec un petit délai
+          window.setTimeout(() => {
+            const retrySuccess = saveTodosToStorage(state.todos);
+            console.log('[DEBUG] ADD_TODO: Tentative de secours:', retrySuccess ? 'Réussie' : 'Échouée');
+          }, 300);
+        }
+      }, 100);
     },
     UPDATE_TODO(state, todo) {
       console.log('[DEBUG] UPDATE_TODO:', todo);
@@ -246,9 +328,18 @@ export default createStore({
         return { success: false, error: 'Aucune donnée locale disponible' };
       }
     },
-    async fetchTodos({ commit, dispatch }) {
+    async fetchTodos({ commit, dispatch, state }) {
+      // SOLUTION FORCÉE: Si des tâches existent déjà, les garder en sauvegarde
+      const existingTodos = [...state.todos];
+      const hasExistingTodos = Array.isArray(existingTodos) && existingTodos.length > 0;
+      
+      if (hasExistingTodos) {
+        console.log(`[DEBUG] ${existingTodos.length} tâches déjà en mémoire avant fetchTodos`);
+      }
+      
       commit('SET_LOADING', true);
       commit('SET_ERROR', null);
+      
       try {
         console.log('[DEBUG] Tentative de récupération des todos depuis le serveur...');
         const { data } = await axios.get('/todos');
@@ -259,6 +350,28 @@ export default createStore({
         }
         
         console.log(`[DEBUG] ${data.length} todos récupérés depuis le serveur`);
+        
+        // SOLUTION FORCÉE: Si le serveur renvoie un tableau vide mais qu'il y avait des tâches, 
+        // privilégier les tâches existantes comme mesure de sécurité
+        if (data.length === 0 && hasExistingTodos) {
+          console.warn('[DEBUG] Le serveur a renvoyé un tableau vide alors que des tâches existent localement! Conservation des tâches locales.');
+          
+          // Sauvegarder les tâches existantes dans le localStorage pour s'assurer qu'elles sont bien persistées
+          const saveSuccess = saveTodosToStorage(existingTodos);
+          console.log('[DEBUG] Sauvegarde forcée des tâches existantes:', saveSuccess ? 'Réussie' : 'Échouée');
+          
+          // Ne pas écraser les tâches existantes dans le state car elles sont plus complètes
+          commit('SET_OFFLINE_MODE', true);
+          commit('SET_NOTIFICATION_STATUS', {
+            success: true,
+            message: 'Conservation des données locales (problème de synchronisation)'
+          });
+          
+          commit('SET_LOADING', false);
+          return { success: true, data: existingTodos, offline: true, preserved: true };
+        }
+        
+        // Cas normal: le serveur a renvoyé des données
         commit('SET_TODOS', data);
         commit('SET_OFFLINE_MODE', false);
         
@@ -274,6 +387,19 @@ export default createStore({
         
         const errorMessage = error.response?.data?.error || 'Erreur lors du chargement des tâches';
         commit('SET_ERROR', errorMessage);
+        
+        // SOLUTION FORCÉE: Conserver les tâches existantes en cas d'erreur
+        if (hasExistingTodos) {
+          console.warn('[DEBUG] Erreur de récupération depuis le serveur, conservation des tâches existantes');
+          commit('SET_OFFLINE_MODE', true);
+          commit('SET_NOTIFICATION_STATUS', {
+            success: true,
+            message: 'Conservation des données locales (problème de connexion)'
+          });
+          
+          commit('SET_LOADING', false);
+          return { success: true, data: existingTodos, offline: true, preserved: true };
+        }
         
         // Si pas de réponse du serveur, utiliser le stockage local
         if (!error.response) {
