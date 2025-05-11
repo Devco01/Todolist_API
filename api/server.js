@@ -127,6 +127,73 @@ app.get('/', (req, res) => {
   });
 });
 
+// Route de diagnostic pour PostgreSQL
+app.get('/api/debug-postgres', async (req, res) => {
+  try {
+    const postgresUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL;
+    
+    res.json({
+      urlConfigured: !!postgresUrl,
+      urlLength: postgresUrl ? postgresUrl.length : 0,
+      env: process.env.NODE_ENV,
+      timestamp: new Date().toISOString(),
+      message: "Cette route permet de vérifier la configuration PostgreSQL"
+    });
+    
+    console.log('DIAG: Route de diagnostic PostgreSQL appelée');
+    console.log('DIAG: URL PostgreSQL configurée:', !!postgresUrl);
+    
+    // Tenter une connexion
+    try {
+      const connection = await connectPostgres();
+      const isConnected = !!connection;
+      
+      console.log('DIAG: Tentative de connexion PostgreSQL:', isConnected ? 'Réussie' : 'Échouée');
+      
+      if (isConnected) {
+        res.json({
+          urlConfigured: !!postgresUrl,
+          urlLength: postgresUrl ? postgresUrl.length : 0,
+          connectionSuccess: true,
+          env: process.env.NODE_ENV,
+          timestamp: new Date().toISOString(),
+          message: "Connexion PostgreSQL réussie"
+        });
+      } else {
+        res.json({
+          urlConfigured: !!postgresUrl,
+          urlLength: postgresUrl ? postgresUrl.length : 0,
+          connectionSuccess: false,
+          env: process.env.NODE_ENV,
+          timestamp: new Date().toISOString(),
+          message: "Échec de connexion PostgreSQL, mais sans erreur"
+        });
+      }
+    } catch (connectionError) {
+      console.error('DIAG: Erreur de connexion PostgreSQL:', connectionError.message);
+      
+      res.status(500).json({
+        urlConfigured: !!postgresUrl,
+        urlLength: postgresUrl ? postgresUrl.length : 0,
+        connectionSuccess: false,
+        error: connectionError.message,
+        env: process.env.NODE_ENV,
+        timestamp: new Date().toISOString(),
+        message: "Erreur lors de la connexion PostgreSQL"
+      });
+    }
+  } catch (error) {
+    console.error('DIAG: Erreur dans la route de diagnostic:', error);
+    
+    res.status(500).json({
+      error: error.message,
+      env: process.env.NODE_ENV,
+      timestamp: new Date().toISOString(),
+      message: "Erreur lors de l'exécution de la route de diagnostic"
+    });
+  }
+});
+
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({ error: 'Route non trouvée' });
