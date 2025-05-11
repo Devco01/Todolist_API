@@ -512,6 +512,19 @@ export default createStore({
           return { success: false, error: errorMessage };
         }
 
+        // CORRECTIF: S'assurer que notificationEmail est vide si notifications désactivées
+        if (!todo.notificationsEnabled) {
+          console.log('[DEBUG] Notifications désactivées, suppression de l\'email pour éviter la validation');
+          todo.notificationEmail = null; // Utiliser null au lieu de chaîne vide pour éviter les problèmes de validation
+        } else if (todo.notificationsEnabled && (!todo.notificationEmail || !todo.notificationEmail.trim())) {
+          // Si notifications activées mais email vide, afficher erreur
+          const errorMessage = 'Une adresse email valide est requise pour les notifications';
+          console.error(errorMessage);
+          commit('SET_ERROR', errorMessage);
+          commit('SET_LOADING', false);
+          return { success: false, error: errorMessage };
+        }
+
         // IMPORTANT: S'assurer que l'ID de l'utilisateur est inclus si l'utilisateur est authentifié
         if (state.isAuthenticated && state.user) {
           if (!todo.userId) {
@@ -549,6 +562,12 @@ export default createStore({
           errorMessage = error.response.data?.error || 
                         `Erreur serveur: ${error.response.status} ${error.response.statusText}`;
           console.error(`Erreur API détaillée:`, error.response.data);
+          
+          // IMPORTANT: Si c'est une erreur 400, c'est une erreur de validation, pas d'authentification
+          if (error.response.status === 400) {
+            console.log('[DEBUG] Erreur 400 de validation détectée, pas de déconnexion');
+            // Ici on ne fait rien de spécial, on laisse simplement l'erreur être gérée normalement
+          }
         } else if (error.request) {
           errorMessage = 'Le serveur n\'a pas répondu à la requête';
         } else if (error.message) {
@@ -589,6 +608,18 @@ export default createStore({
       if (!todo) {
         console.error('[DEBUG] Action updateTodo: Tentative de mise à jour d\'une tâche nulle');
         return { success: false, error: 'Tâche non valide' };
+      }
+      
+      // CORRECTIF: S'assurer que notificationEmail est vide si notifications désactivées
+      if (todo.hasOwnProperty('notificationsEnabled') && !todo.notificationsEnabled) {
+        console.log('[DEBUG] Notifications désactivées, suppression de l\'email pour éviter la validation');
+        todo.notificationEmail = null; // Utiliser null au lieu de chaîne vide pour éviter les problèmes de validation
+      } else if (todo.notificationsEnabled && (!todo.notificationEmail || !todo.notificationEmail.trim())) {
+        // Si notifications activées mais email vide, afficher erreur
+        const errorMessage = 'Une adresse email valide est requise pour les notifications';
+        console.error(errorMessage);
+        commit('SET_ERROR', errorMessage);
+        return { success: false, error: errorMessage };
       }
       
       // CORRECTIF CRITIQUE: S'assurer que la tâche a les deux types d'ID (id et _id)
@@ -648,6 +679,13 @@ export default createStore({
         
         const errorMessage = error.response?.data?.error || 'Erreur lors de la mise à jour de la tâche';
         commit('SET_ERROR', errorMessage);
+        
+        // IMPORTANT: Si c'est une erreur 400, c'est une erreur de validation, pas d'authentification
+        if (error.response && error.response.status === 400) {
+          console.log('[DEBUG] Erreur 400 de validation détectée dans updateTodo, pas de déconnexion');
+          // Ici on ne fait rien de spécial, on laisse simplement l'erreur être gérée normalement
+          // mais on ne déclenchera pas de déconnexion
+        }
         
         // Si pas de réponse du serveur, utiliser le stockage local
         if (!error.response) {

@@ -137,6 +137,7 @@
               id="notifications-toggle" 
               v-model="todo.notificationsEnabled"
               class="toggle-checkbox"
+              @change="handleNotificationToggle"
             >
             <label for="notifications-toggle" class="toggle-label"></label>
           </div>
@@ -270,6 +271,33 @@ export default {
       try {
         console.log('Démarrage de la soumission du formulaire avec:', todo.value);
         
+        // Validation de l'email si les notifications sont activées
+        if (todo.value.notificationsEnabled) {
+          if (!todo.value.notificationEmail || !todo.value.notificationEmail.trim()) {
+            console.error('Erreur: Email requis pour les notifications');
+            notificationMessage.value = 'Erreur: Une adresse email est requise pour les notifications';
+            showNotification.value = true;
+            setTimeout(() => {
+              showNotification.value = false;
+            }, 5000);
+            return;
+          }
+          
+          // Validation basique du format de l'email
+          if (!/\S+@\S+\.\S+/.test(todo.value.notificationEmail)) {
+            console.error('Erreur: Format d\'email invalide');
+            notificationMessage.value = 'Erreur: L\'adresse email n\'est pas valide';
+            showNotification.value = true;
+            setTimeout(() => {
+              showNotification.value = false;
+            }, 5000);
+            return;
+          }
+        } else {
+          // Si notifications désactivées, s'assurer que l'email est vide
+          todo.value.notificationEmail = '';
+        }
+        
         // Toujours envoyer la date au format ISO (YYYY-MM-DD) au backend
         const storageDate = formatDateForStorage(todo.value.dueDate);
         
@@ -335,6 +363,14 @@ export default {
       }
     }
 
+    const handleNotificationToggle = () => {
+      // Si les notifications sont désactivées, effacer l'email
+      if (!todo.value.notificationsEnabled) {
+        console.log('[DEBUG] Notifications désactivées, effacement du champ email');
+        todo.value.notificationEmail = '';
+      }
+    }
+
     return {
       todo,
       hours,
@@ -344,7 +380,8 @@ export default {
       formatDateForDisplay,
       formatDateForStorage,
       notificationMessage,
-      showNotification
+      showNotification,
+      handleNotificationToggle
     }
   }
 }
