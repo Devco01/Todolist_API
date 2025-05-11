@@ -13,6 +13,12 @@ const initAuthService = async () => {
   try {
     console.log('[AUTH] Initialisation du service d\'authentification...');
     
+    // Si le mode mémoire est activé
+    if (process.env.USE_MEMORY_MODE === 'true') {
+      console.log('[AUTH] Mode mémoire activé pour le service d\'authentification');
+      return true;
+    }
+    
     // Connecter à PostgreSQL
     const connection = await connectPostgres();
     console.log('[AUTH] Résultat de la connexion PostgreSQL:', connection ? 'Succès' : 'Échec');
@@ -89,60 +95,8 @@ const registerUser = async (userData) => {
     }
     console.log('[AUTH] État de la base de données:', dbState);
     
-    // Essayer de créer directement avec SQL si nécessaire
-    let newUser;
-    try {
-      // Essayer la méthode normale d'abord
-      console.log('[AUTH] Tentative de création via Sequelize.create()');
-      newUser = await UserModel.create(userToCreate);
-    } catch (createError) {
-      console.error('[AUTH] Erreur lors de la création via Sequelize:', createError);
-      
-      // Essayer via SQL direct en cas d'échec
-      if (sequelize) {
-        try {
-          console.log('[AUTH] Tentative de création via SQL direct');
-          // Hasher le mot de passe avant insertion
-          const salt = await bcrypt.genSalt(10);
-          const hashedPassword = await bcrypt.hash(userToCreate.password, salt);
-          
-          // Générer un UUID pour l'ID
-          const [idResult] = await sequelize.query("SELECT gen_random_uuid() as id");
-          const userId = idResult[0]?.id;
-          
-          const now = new Date().toISOString();
-          
-          // Insérer directement dans la table
-          const [insertResult] = await sequelize.query(`
-            INSERT INTO "User" (id, username, email, password, "isAdmin", "createdAt", "updatedAt")
-            VALUES (:id, :username, :email, :password, :isAdmin, :createdAt, :updatedAt)
-            RETURNING id, username, email, "isAdmin", "createdAt"
-          `, {
-            replacements: {
-              id: userId,
-              username: userToCreate.username,
-              email: userToCreate.email,
-              password: hashedPassword,
-              isAdmin: userToCreate.isAdmin,
-              createdAt: now,
-              updatedAt: now
-            }
-          });
-          
-          if (insertResult && insertResult.length > 0) {
-            console.log('[AUTH] Utilisateur créé avec SQL direct:', insertResult[0].id);
-            newUser = insertResult[0];
-          } else {
-            throw new Error('Aucun résultat retourné par l\'insertion');
-          }
-        } catch (sqlError) {
-          console.error('[AUTH] Échec également via SQL direct:', sqlError);
-          throw sqlError;
-        }
-      } else {
-        throw createError;
-      }
-    }
+    // Créer l'utilisateur
+    let newUser = await UserModel.create(userToCreate);
     
     console.log('[AUTH] Utilisateur créé avec succès:', newUser.id);
     

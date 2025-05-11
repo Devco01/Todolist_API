@@ -7,17 +7,25 @@ let UserModel = null;
 
 // Mode de secours en mémoire
 let inMemoryUsers = [];
-let isUsingMemoryMode = false;
+let isUsingMemoryMode = process.env.USE_MEMORY_MODE === 'true';
 
 // Force créer le modèle et la table immédiatement
 const initUserModel = async (force = true) => {
   console.log('[USERPG] Initialisation forcée du modèle User');
+  console.log('[USERPG] Mode mémoire activé:', isUsingMemoryMode);
+  
+  // Si le mode mémoire est explicitement activé, retourner immédiatement
+  if (isUsingMemoryMode) {
+    console.log('[USERPG] Utilisation du mode mémoire, pas de création de table nécessaire');
+    return true;
+  }
   
   // Obtenir l'instance Sequelize
   const sequelize = getSequelize();
   if (!sequelize) {
-    console.log('[USERPG] Base de données non disponible, initialisation impossible');
-    return false;
+    console.log('[USERPG] Base de données non disponible, activation du mode mémoire');
+    isUsingMemoryMode = true;
+    return true;
   }
   
   try {
@@ -101,13 +109,21 @@ const initUserModel = async (force = true) => {
     }
   } catch (error) {
     console.error('[USERPG] Erreur globale lors de l\'initialisation du modèle User:', error);
-    return false;
+    console.log('[USERPG] Activation du mode mémoire suite à une erreur');
+    isUsingMemoryMode = true;
+    return true;
   }
 };
 
 // Fonction pour obtenir le modèle
 const getUserModel = () => {
   if (UserModel) return UserModel;
+  
+  // Si le mode mémoire est explicitement activé
+  if (isUsingMemoryMode) {
+    console.log('[USERPG] Mode mémoire activé, utilisation du modèle en mémoire');
+    return getMemoryModel();
+  }
   
   // Obtenir l'instance Sequelize
   const sequelize = getSequelize();
@@ -116,87 +132,7 @@ const getUserModel = () => {
   if (!sequelize) {
     console.log('[USERPG] Base de données PostgreSQL non disponible, activation du mode mémoire');
     isUsingMemoryMode = true;
-    
-    // Renvoyer un modèle factice avec les mêmes méthodes
-    return {
-      isUsingMemoryMode: true,
-      findOne: async ({ where }) => {
-        console.log('[USERPG-MEMORY] Recherche d\'utilisateur avec critères:', where);
-        
-        if (where && where[Op.or]) {
-          // Recherche OR pour username ou email
-          const criteria = where[Op.or];
-          return inMemoryUsers.find(user => 
-            (criteria[0].username && user.username === criteria[0].username) || 
-            (criteria[1].email && user.email === criteria[1].email)
-          );
-        } else if (where && where.id) {
-          // Recherche par ID
-          return inMemoryUsers.find(user => user.id === where.id);
-        } else if (where && where.username) {
-          // Recherche par username
-          return inMemoryUsers.find(user => user.username === where.username);
-        } else if (where && where.email) {
-          // Recherche par email
-          return inMemoryUsers.find(user => user.email === where.email);
-        }
-        
-        return null;
-      },
-      findByPk: async (id) => {
-        console.log('[USERPG-MEMORY] Recherche d\'utilisateur par ID:', id);
-        return inMemoryUsers.find(user => user.id === id);
-      },
-      create: async (userData) => {
-        console.log('[USERPG-MEMORY] Création d\'utilisateur en mémoire');
-        
-        // Validation de base
-        if (!userData.username || userData.username.length < 3) {
-          throw new Error('Le nom d\'utilisateur doit contenir au moins 3 caractères');
-        }
-        
-        if (!userData.email || !/\S+@\S+\.\S+/.test(userData.email)) {
-          throw new Error('Email invalide');
-        }
-        
-        if (!userData.password || userData.password.length < 6) {
-          throw new Error('Le mot de passe doit contenir au moins 6 caractères');
-        }
-        
-        // Vérifier si l'utilisateur existe déjà
-        const existingUser = inMemoryUsers.find(
-          user => user.username === userData.username || user.email === userData.email
-        );
-        
-        if (existingUser) {
-          throw new Error('Un utilisateur avec ce nom d\'utilisateur ou cet email existe déjà');
-        }
-        
-        // Hasher le mot de passe
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(userData.password, salt);
-        
-        // Créer le nouvel utilisateur
-        const newUser = {
-          id: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15),
-          username: userData.username,
-          email: userData.email,
-          password: hashedPassword,
-          isAdmin: userData.isAdmin || false,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          comparePassword: async function(candidatePassword) {
-            return bcrypt.compare(candidatePassword, this.password);
-          }
-        };
-        
-        // Ajouter à la liste en mémoire
-        inMemoryUsers.push(newUser);
-        
-        console.log('[USERPG-MEMORY] Utilisateur créé avec ID:', newUser.id);
-        return newUser;
-      }
-    };
+    return getMemoryModel();
   }
   
   console.log('[USERPG] Définition du modèle User avec Sequelize');

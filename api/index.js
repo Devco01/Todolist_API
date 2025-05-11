@@ -1,7 +1,6 @@
 const path = require('path');
 const dotenv = require('dotenv');
 const express = require('express');
-const mongoose = require('mongoose');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
 const { connectPostgres } = require('./config/postgres');
@@ -11,6 +10,12 @@ const authService = require('./services/authService');
 
 // Charger les variables d'environnement
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
+
+// Activer automatiquement le mode mémoire si nécessaire
+if (!process.env.POSTGRES_URL && !process.env.DATABASE_URL) {
+  console.log('Aucune URL PostgreSQL trouvée. Activation du mode mémoire.');
+  process.env.USE_MEMORY_MODE = 'true';
+}
 
 // Initialiser l'application Express
 const app = express();
@@ -30,55 +35,53 @@ const initDatabases = async () => {
   try {
     console.log('Initialisation des bases de données...');
     
-    // Initialiser la connexion PostgreSQL
-    const pgConnected = await connectPostgres();
-    console.log('Connexion PostgreSQL:', pgConnected ? 'Réussie' : 'Échouée');
-    
-    if (pgConnected) {
-      // Initialiser les modèles PostgreSQL
-      console.log('Initialisation forcée du modèle User...');
-      await initUserModel(true);
+    // Initialiser la connexion PostgreSQL si le mode mémoire n'est pas activé
+    let pgConnected = false;
+    if (process.env.USE_MEMORY_MODE !== 'true') {
+      pgConnected = await connectPostgres();
+      console.log('Connexion PostgreSQL:', pgConnected ? 'Réussie' : 'Échouée');
       
-      // Forcer la synchronisation du modèle Todo pour s'assurer que la table est créée
-      console.log('Initialisation et synchronisation forcée du modèle Todo...');
+      // Activer le mode mémoire si la connexion PostgreSQL a échoué
+      if (!pgConnected) {
+        console.log('Activation du mode mémoire suite à l\'échec de connexion PostgreSQL');
+        process.env.USE_MEMORY_MODE = 'true';
+      }
+    } else {
+      console.log('Mode mémoire activé, connexion PostgreSQL ignorée');
+    }
+    
+    // Initialiser les modèles (avec ou sans mode mémoire)
+    console.log('Initialisation du modèle User...');
+    await initUserModel(true);
+    
+    // Synchroniser le modèle Todo uniquement si PostgreSQL est connecté
+    if (pgConnected) {
+      console.log('Initialisation et synchronisation du modèle Todo...');
       const todoSynced = await syncTodoModel(true);
       console.log('Synchronisation du modèle Todo:', todoSynced ? 'Réussie' : 'Échouée');
-      
-      // Initialiser le service d'authentification
-      await authService.initAuthService();
-      console.log('Service d\'authentification initialisé avec succès');
     }
     
-    // Initialiser la connexion MongoDB (si besoin)
-    if (process.env.MONGODB_URI) {
-      try {
-        await mongoose.connect(process.env.MONGODB_URI);
-        console.log('Connexion MongoDB:', 'Réussie');
-      } catch (mongoError) {
-        console.error('Erreur de connexion MongoDB:', mongoError);
-      }
-    }
+    // Initialiser le service d'authentification
+    await authService.initAuthService();
+    console.log('Service d\'authentification initialisé avec succès');
     
     console.log('Initialisation des bases de données terminée');
+    console.log('Mode de fonctionnement:', process.env.USE_MEMORY_MODE === 'true' ? 'MÉMOIRE' : 'BASE DE DONNÉES');
   } catch (error) {
     console.error('Erreur lors de l\'initialisation des bases de données:', error);
   }
 };
 
 // Routes
-const todoRoutes = require('./routes/todoRoutes');
 const todoPgRoutes = require('./routes/todoPgRoutes');
 const authRoutes = require('./routes/authRoutes');
-const notificationRoutes = require('./routes/notificationRoutes');
 const notificationPgRoutes = require('./routes/notificationRoutesPg');
 const keepAliveRoutes = require('./routes/keepAliveRoutes');
 
 // API Routes
-app.use('/api/todos', todoRoutes);
-app.use('/api/todos', todoPgRoutes); // PostgreSQL - même endpoint
+app.use('/api/todos', todoPgRoutes); // PostgreSQL
 app.use('/api/auth', authRoutes);
-app.use('/api/notifications', notificationRoutes);
-app.use('/api/notifications', notificationPgRoutes); // PostgreSQL - même endpoint
+app.use('/api/notifications', notificationPgRoutes); // PostgreSQL
 app.use('/api/keep-alive', keepAliveRoutes);
 
 // Pour le déploiement Vercel

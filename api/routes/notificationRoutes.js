@@ -3,6 +3,7 @@ const router = express.Router();
 const Todo = require('../models/Todo');
 const notificationService = require('../services/notificationService');
 const emailService = require('../services/emailService');
+const { protect } = require('../middleware/authMiddleware');
 
 // Endpoint pour vérifier manuellement les notifications
 // GET /api/notifications/force-check
@@ -230,6 +231,14 @@ router.get('/history', async (req, res) => {
       error: error.message
     });
   }
+});
+
+// Route factice pour éviter l'erreur
+router.get('/mongodb', protect, (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'API MongoDB notifications non disponible en mode mémoire'
+  });
 });
 
 module.exports = router; 
