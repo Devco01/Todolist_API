@@ -1,4 +1,4 @@
-const { connectPostgres } = require('../config/postgres');
+const { connectPostgres, getSequelize } = require('../config/postgres');
 const { getTodoModel, syncTodoModel } = require('../models/TodoPg');
 const { Op } = require('sequelize');
 
@@ -10,15 +10,89 @@ let inMemoryTodos = [];
 const init = async () => {
   try {
     // Connecter à PostgreSQL
-    await connectPostgres();
+    const connection = await connectPostgres();
+    if (!connection) {
+      console.error('[TODOPG] Échec de connexion à PostgreSQL');
+      return false;
+    }
+    
+    // Vérifier si la table Todo existe
+    console.log('[TODOPG] Vérification de l\'existence de la table Todo');
+    const sequelize = getSequelize();
+    try {
+      const [checkResults] = await sequelize.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_name = 'Todo'
+        );
+      `);
+      const tableExists = checkResults[0]?.exists === true;
+      console.log('[TODOPG] La table Todo existe:', tableExists);
+      
+      // Si la table n'existe pas, la créer manuellement
+      if (!tableExists) {
+        console.log('[TODOPG] Création manuelle de la table Todo avec SQL');
+        try {
+          await sequelize.query(`
+            CREATE TABLE IF NOT EXISTS "Todo" (
+              id SERIAL PRIMARY KEY,
+              title VARCHAR(255) NOT NULL,
+              description TEXT,
+              "dueDate" DATE,
+              "dueTime" VARCHAR(255),
+              category VARCHAR(255) DEFAULT 'autre',
+              priority VARCHAR(255) DEFAULT 'medium',
+              completed BOOLEAN DEFAULT false,
+              "notificationEmail" VARCHAR(255),
+              "notificationsEnabled" BOOLEAN DEFAULT false,
+              "notificationSent" BOOLEAN DEFAULT false,
+              "userId" UUID REFERENCES "User"(id) ON DELETE SET NULL,
+              "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+              "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+            );
+          `);
+          console.log('[TODOPG] Table Todo créée manuellement avec succès');
+        } catch (sqlError) {
+          console.error('[TODOPG] Erreur lors de la création manuelle de la table Todo:', sqlError);
+          
+          // Essayer avec une méthode alternative si la première échoue
+          try {
+            console.log('[TODOPG] Tentative alternative de création de table Todo');
+            await sequelize.query(`
+              CREATE TABLE IF NOT EXISTS "Todo" (
+                id SERIAL PRIMARY KEY,
+                title VARCHAR(255) NOT NULL,
+                description TEXT,
+                "dueDate" VARCHAR(255),
+                "dueTime" VARCHAR(255),
+                category VARCHAR(255),
+                priority VARCHAR(255),
+                completed BOOLEAN DEFAULT false,
+                "notificationEmail" VARCHAR(255),
+                "notificationsEnabled" BOOLEAN DEFAULT false,
+                "notificationSent" BOOLEAN DEFAULT false,
+                "userId" VARCHAR(255),
+                "createdAt" TIMESTAMP NOT NULL,
+                "updatedAt" TIMESTAMP NOT NULL
+              );
+            `);
+            console.log('[TODOPG] Table Todo créée avec méthode alternative');
+          } catch (altError) {
+            console.error('[TODOPG] Échec également de la méthode alternative:', altError);
+          }
+        }
+      }
+    } catch (checkError) {
+      console.error('[TODOPG] Erreur lors de la vérification de la table:', checkError);
+    }
     
     // Synchroniser le modèle (en mode non destructif)
     await syncTodoModel(false);
     
-    console.log('Service todoPg initialisé avec succès');
+    console.log('[TODOPG] Service todoPg initialisé avec succès');
     return true;
   } catch (error) {
-    console.error('Erreur lors de l\'initialisation du service todoPg:', error);
+    console.error('[TODOPG] Erreur lors de l\'initialisation du service todoPg:', error);
     return false;
   }
 };

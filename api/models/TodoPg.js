@@ -86,7 +86,9 @@ const defineTodoModel = () => {
     // Options du modèle
     timestamps: true, // Ajoute createdAt et updatedAt
     tableName: 'Todo', // Nom de la table au singulier pour cohérence
-    freezeTableName: true // Désactiver l'ajout de 's' à la fin du nom de table
+    freezeTableName: true, // Désactiver l'ajout de 's' à la fin du nom de table
+    underscored: false, // IMPORTANT: Ne pas convertir les colonnes en snake_case
+    quoteIdentifiers: true // IMPORTANT: Conserver les guillemets sur les identifiants
   });
   
   // Méthodes additionnelles comme celle pour vérifier les notifications
