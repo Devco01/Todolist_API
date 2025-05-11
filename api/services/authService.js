@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const { getUserModel, syncUserModel } = require('../models/UserPg');
 const { connectPostgres, getSequelize } = require('../config/postgres');
 const { Op } = require('sequelize');
+const bcrypt = require('bcrypt');
 
 // Clé secrète pour les JWT - à remplacer par une variable d'environnement en production
 const JWT_SECRET = process.env.JWT_SECRET || 'votre_clé_secrète_jwt';
@@ -116,23 +117,107 @@ const loginUser = async (username, password) => {
       throw new Error('Modèle utilisateur non disponible');
     }
     
-    // Chercher l'utilisateur par nom d'utilisateur ou email
-    const user = await UserModel.findOne({
-      where: {
-        [Op.or]: [
-          { username },
-          { email: username } // Permet la connexion par email aussi
-        ]
+    // Debug - Vérifier si la table User existe
+    const sequelize = getSequelize();
+    try {
+      const [checkResults] = await sequelize.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_name = 'User'
+        );
+      `);
+      console.log('[AUTH] La table User existe:', checkResults[0]?.exists);
+      
+      // Obtenir le nombre d'utilisateurs
+      const [countResults] = await sequelize.query('SELECT COUNT(*) FROM "User"');
+      console.log('[AUTH] Nombre d\'utilisateurs dans la base:', countResults[0]?.count);
+      
+      // Rechercher spécifiquement l'utilisateur demandé
+      const [userResults] = await sequelize.query(`
+        SELECT id, username, email FROM "User" 
+        WHERE username = :username OR email = :username
+      `, {
+        replacements: { username }
+      });
+      
+      console.log('[AUTH] Recherche SQL directe pour utilisateur:', username);
+      console.log('[AUTH] Résultat de la recherche directe:', userResults.length > 0 ? 'Trouvé' : 'Non trouvé');
+      
+      if (userResults.length === 0) {
+        console.log('[AUTH] Aucun utilisateur trouvé avec ce nom/email via SQL direct');
       }
-    });
+    } catch (dbError) {
+      console.error('[AUTH] Erreur lors de la vérification de la base de données:', dbError);
+    }
+    
+    // Chercher l'utilisateur par nom d'utilisateur ou email
+    console.log('[AUTH] Recherche de l\'utilisateur avec Sequelize');
+    let user = null;
+    
+    // Essayer d'abord par nom d'utilisateur
+    try {
+      user = await UserModel.findOne({
+        where: { username }
+      });
+      
+      if (!user) {
+        console.log('[AUTH] Utilisateur non trouvé par nom d\'utilisateur, essai par email');
+        // Essayer par email si le format semble être un email
+        if (username.includes('@')) {
+          user = await UserModel.findOne({
+            where: { email: username }
+          });
+        }
+      }
+    } catch (findError) {
+      console.error('[AUTH] Erreur lors de la recherche de l\'utilisateur:', findError);
+      // Essayer avec une requête SQL directe en dernier recours
+      try {
+        const [results] = await sequelize.query(`
+          SELECT * FROM "User" WHERE username = :username OR email = :username LIMIT 1
+        `, {
+          replacements: { username }
+        });
+        
+        if (results.length > 0) {
+          console.log('[AUTH] Utilisateur trouvé via SQL direct');
+          const rawUser = results[0];
+          
+          // Créer un objet avec la méthode comparePassword
+          user = {
+            ...rawUser,
+            comparePassword: async (candidatePassword) => {
+              return bcrypt.compare(candidatePassword, rawUser.password);
+            }
+          };
+        }
+      } catch (sqlError) {
+        console.error('[AUTH] Échec de la recherche SQL directe:', sqlError);
+      }
+    }
     
     if (!user) {
       console.log('[AUTH] Utilisateur non trouvé:', username);
       throw new Error('Utilisateur non trouvé');
     }
     
+    console.log('[AUTH] Utilisateur trouvé, vérification du mot de passe');
+    
     // Vérifier le mot de passe
-    const isPasswordValid = await user.comparePassword(password);
+    let isPasswordValid = false;
+    try {
+      isPasswordValid = await user.comparePassword(password);
+    } catch (compareError) {
+      console.error('[AUTH] Erreur lors de la vérification du mot de passe:', compareError);
+      
+      // Solution de secours si comparePassword échoue
+      try {
+        isPasswordValid = await bcrypt.compare(password, user.password);
+      } catch (bcryptError) {
+        console.error('[AUTH] Échec également de bcrypt.compare:', bcryptError);
+      }
+    }
+    
     if (!isPasswordValid) {
       console.log('[AUTH] Mot de passe incorrect pour:', username);
       throw new Error('Mot de passe incorrect');
