@@ -371,4 +371,32 @@ router.get('/email-diagnostics', (req, res) => {
   });
 });
 
+// Route pour forcer une vérification des notifications
+router.get('/force-check', async (req, res) => {
+  try {
+    console.log('Route force-check appelée');
+    
+    // Vérifier les tâches pour les notifications
+    await notificationService.checkTasksForNotification();
+    
+    // Envoyer les notifications en attente
+    const result = await notificationService.sendPendingNotifications();
+    
+    res.status(200).json({
+      success: true,
+      message: 'Vérification des notifications terminée avec succès',
+      timestamp: new Date().toISOString(),
+      result
+    });
+  } catch (error) {
+    console.error('Erreur lors de la vérification des notifications:', error);
+    
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 module.exports = router; 
