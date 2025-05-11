@@ -47,13 +47,22 @@ const connectPostgres = async () => {
     console.log('[POSTGRES] URL PostgreSQL trouvée, tentative de connexion...');
     console.log('[POSTGRES] Format de l\'URL:', postgresUrl.split('@')[0].replace(/:[^:]*@/, ':***@'));
     
-    // Options SSL pour Neon
-    const dialectOptions = {
-      ssl: {
-        require: true,
-        rejectUnauthorized: false
-      }
-    };
+    // Options SSL pour Neon - assouplies en développement
+    const dialectOptions = process.env.NODE_ENV === 'production' 
+      ? {
+          ssl: {
+            require: true,
+            rejectUnauthorized: false
+          }
+        }
+      : {
+          ssl: {
+            require: false,
+            rejectUnauthorized: false
+          }
+        };
+    
+    console.log(`[POSTGRES] Configuration SSL: ${process.env.NODE_ENV === 'production' ? 'Stricte (production)' : 'Assouplie (développement)'}`);
 
     // Créer une nouvelle instance Sequelize
     sequelize = new Sequelize(postgresUrl, {

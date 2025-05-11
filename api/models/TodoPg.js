@@ -8,8 +8,11 @@ const defineTodoModel = () => {
   
   // Si pas de connexion Sequelize, ne pas définir le modèle
   if (!sequelize) {
+    console.log('[TODOPG] Pas de connexion Sequelize disponible');
     return null;
   }
+  
+  console.log('[TODOPG] Définition du modèle Todo');
   
   // Définir le modèle
   const Todo = sequelize.define('Todo', {
@@ -75,14 +78,14 @@ const defineTodoModel = () => {
       type: DataTypes.UUID,
       allowNull: true, // On permet null pour les anciennes tâches
       references: {
-        model: 'Users', // Nom de la table
+        model: 'User', // Nom exact de la table User (corrigé)
         key: 'id'
       }
     }
   }, {
     // Options du modèle
     timestamps: true, // Ajoute createdAt et updatedAt
-    tableName: 'todos' // Nom de la table en minuscules et au pluriel
+    tableName: 'Todo' // Nom de la table au singulier pour cohérence
   });
   
   // Méthodes additionnelles comme celle pour vérifier les notifications
@@ -160,8 +163,11 @@ const defineTodoModel = () => {
   // Établir les associations avec User si le modèle existe
   const User = getUserModel();
   if (User) {
+    console.log('[TODOPG] Établissement des associations avec le modèle User');
     Todo.belongsTo(User, { foreignKey: 'userId' });
     User.hasMany(Todo, { foreignKey: 'userId' });
+  } else {
+    console.log('[TODOPG] Modèle User non disponible, associations non établies');
   }
   
   return Todo;
@@ -170,15 +176,24 @@ const defineTodoModel = () => {
 // Fonction pour synchroniser le modèle avec la base de données
 const syncTodoModel = async (force = false) => {
   try {
+    console.log('[TODOPG] Tentative de synchronisation du modèle Todo');
+    
     const Todo = getTodoModel();
-    if (!Todo) return false;
+    if (!Todo) {
+      console.error('[TODOPG] Modèle Todo non disponible pour synchronisation');
+      return false;
+    }
+    
+    // Synchroniser le modèle avec force si nécessaire
+    const forceSync = process.env.FORCE_SYNC === 'true' || force;
+    console.log(`[TODOPG] Synchronisation avec force=${forceSync}`);
     
     // Synchroniser le modèle
-    await Todo.sync({ force });
-    console.log('Modèle Todo synchronisé avec la base de données');
+    await Todo.sync({ force: forceSync });
+    console.log('[TODOPG] Modèle Todo synchronisé avec la base de données');
     return true;
   } catch (error) {
-    console.error('Erreur lors de la synchronisation du modèle Todo:', error);
+    console.error('[TODOPG] Erreur lors de la synchronisation du modèle Todo:', error);
     return false;
   }
 };
