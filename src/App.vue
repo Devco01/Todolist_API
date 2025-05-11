@@ -95,9 +95,32 @@ export default {
       }
     };
     
+    // Fonction pour récupérer l'utilisateur si les informations sont perdues
+    const recoverUserIfNeeded = async () => {
+      try {
+        // Vérifier si nous avons un token mais pas d'utilisateur
+        const token = localStorage.getItem('authToken');
+        const user = localStorage.getItem('user');
+        
+        if (token && (!user || user === 'null')) {
+          console.log('[DEBUG] Token trouvé mais informations utilisateur manquantes, tentative de récupération');
+          
+          // Tentative de récupération des informations utilisateur
+          await store.dispatch('checkAuth');
+          
+          console.log('[DEBUG] Récupération utilisateur:', store.state.isAuthenticated ? 'Réussi' : 'Échec');
+        }
+      } catch (error) {
+        console.error('[DEBUG] Erreur lors de la tentative de récupération utilisateur:', error);
+      }
+    };
+    
     // Charger les tâches au démarrage de l'application
     onMounted(async () => {
       console.log('[DEBUG] Application démarrée - Initialisation...');
+      
+      // Tenter de récupérer l'utilisateur si les informations sont partiellement disponibles
+      await recoverUserIfNeeded();
       
       // Vérifier l'authentification de l'utilisateur
       try {
@@ -219,6 +242,9 @@ export default {
       };
       
       try {
+        // Appeler notre fonction d'aide pour récupérer l'utilisateur si nécessaire
+        await recoverUserIfNeeded();
+      
         // Essayer de récupérer les données avec retry
         const result = await fetchWithRetry();
         
@@ -238,6 +264,12 @@ export default {
         // Configurer la synchronisation périodique (toutes les 5 minutes)
         syncInterval = setInterval(syncTodos, 5 * 60 * 1000);
         
+        // Configurer une vérification périodique de l'authentification (toutes les 10 minutes)
+        const authCheckInterval = setInterval(async () => {
+          console.log('[DEBUG] Vérification périodique de l\'authentification...');
+          await recoverUserIfNeeded();
+        }, 10 * 60 * 1000);
+        
         // Ajout d'une sauvegarde périodique toutes les 30 secondes
         const saveInterval = setInterval(forceSaveTodos, 30 * 1000);
         
@@ -248,12 +280,22 @@ export default {
         window.addEventListener('online', () => {
           console.log('[DEBUG] Connexion internet rétablie - Synchronisation des tâches');
           syncTodos();
+          // Tenter également de récupérer l'utilisateur si nécessaire
+          recoverUserIfNeeded();
         });
         
         // Sauvegarder avant fermeture de la page
         window.addEventListener('beforeunload', () => {
           console.log('[DEBUG] Page en cours de fermeture - Sauvegarde des tâches');
           forceSaveTodos();
+        });
+        
+        // Nettoyer les intervalles lors de la destruction
+        onUnmounted(() => {
+          clearInterval(syncInterval);
+          clearInterval(saveInterval);
+          clearInterval(authCheckInterval);
+          document.removeEventListener('visibilitychange', handleVisibilityChange);
         });
       } catch (error) {
         console.error('[DEBUG] Erreur lors du chargement initial des tâches:', error);
@@ -272,17 +314,6 @@ export default {
         window.setTimeout(forceSaveTodos, 500);
       }
     });
-    
-    // Nettoyage des écouteurs d'événements et des intervalles
-    const cleanup = () => {
-      if (syncInterval) {
-        clearInterval(syncInterval);
-      }
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-    
-    // Nettoyer les ressources lors de la destruction du composant
-    onUnmounted(cleanup);
     
     return {
       notificationStatus

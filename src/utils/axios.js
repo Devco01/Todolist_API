@@ -97,6 +97,13 @@ instance.interceptors.response.use(
       console.error('[AXIOS] Erreur:', error.message);
     }
     
+    // IMPORTANT: Ne pas déconnecter l'utilisateur pour les erreurs 400 (validation)
+    if (error.response && error.response.status === 400) {
+      console.warn('[AXIOS] Erreur de validation 400 détectée, ne pas déconnecter');
+      // Simplement laisser l'erreur remonter pour être traitée par le composant
+      return Promise.reject(error);
+    }
+    
     // Gérer les erreurs d'authentification (401)
     if (error.response && error.response.status === 401) {
       // Vérifier si l'erreur vient d'une route autre que l'authentification ou la modification de données

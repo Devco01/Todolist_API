@@ -61,7 +61,15 @@ const defineTodoModel = () => {
       type: DataTypes.STRING,
       allowNull: true,
       validate: {
-        isEmail: true
+        isEmailIfNotificationsEnabled(value) {
+          // Validation conditionnelle : vérifier l'email seulement si les notifications sont activées
+          if (this.notificationsEnabled && value) {
+            if (!/\S+@\S+\.\S+/.test(value)) {
+              throw new Error('L\'adresse email n\'est pas valide');
+            }
+          }
+          // Si notifications désactivées, pas de validation d'email nécessaire
+        }
       }
     },
     notificationsEnabled: {
