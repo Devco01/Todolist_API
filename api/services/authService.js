@@ -16,8 +16,9 @@ const initAuthService = async () => {
     const connection = await connectPostgres();
     console.log('[AUTH] Résultat de la connexion PostgreSQL:', connection ? 'Succès' : 'Échec');
     
-    // Synchroniser le modèle utilisateur
-    const syncResult = await syncUserModel();
+    // Synchroniser le modèle utilisateur avec force=true en production pour assurer la création des tables
+    const forceSync = process.env.NODE_ENV === 'production';
+    const syncResult = await syncUserModel(forceSync);
     console.log('[AUTH] Résultat de la synchronisation du modèle utilisateur:', syncResult ? 'Succès' : 'Échec');
     
     console.log('[AUTH] Service d\'authentification initialisé avec succès');

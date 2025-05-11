@@ -153,6 +153,8 @@ const getUserModel = () => {
       defaultValue: false
     }
   }, {
+    // Spécifier le nom exact de la table au singulier (bug corrigé)
+    tableName: 'User',
     // Hooks pour hacher le mot de passe avant la création/mise à jour
     hooks: {
       beforeCreate: async (user) => {
@@ -197,7 +199,11 @@ const syncUserModel = async (force = false) => {
   }
   
   try {
-    await model.sync({ force });
+    // Forcer la création de la table
+    const forceSync = process.env.FORCE_SYNC === 'true' || force;
+    console.log(`[USERPG] Synchronisation du modèle avec force=${forceSync}`);
+    
+    await model.sync({ force: forceSync });
     console.log('[USERPG] Modèle User synchronisé avec la base de données');
     return true;
   } catch (error) {
