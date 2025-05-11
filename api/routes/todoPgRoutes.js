@@ -41,8 +41,20 @@ router.post('/', protect, async (req, res) => {
     // Normaliser le format de date si nécessaire
     const todoData = { ...req.body };
     
+    // Vérifier que l'utilisateur a un ID valide
+    if (!req.user || !req.user.id) {
+      console.error('POST /todos - Erreur: ID utilisateur non disponible dans req.user');
+      return res.status(401).json({ 
+        error: 'Erreur d\'authentification, veuillez vous reconnecter',
+        details: 'ID utilisateur manquant'
+      });
+    }
+    
     // Ajouter l'ID de l'utilisateur connecté
     todoData.userId = req.user.id;
+    
+    // Debug de l'ID utilisateur
+    console.log(`POST /todos - Association avec l'utilisateur ID: ${todoData.userId}`);
     
     // S'assurer que dueDate est au bon format (YYYY-MM-DD) pour le stockage
     if (todoData.dueDate) {
@@ -69,8 +81,21 @@ router.post('/', protect, async (req, res) => {
       }
     }
     
-    const newTodo = await todoPgService.createTodo(todoData);
-    res.status(201).json(newTodo);
+    // Essayer de créer la tâche avec gestion explicite de l'erreur de clé étrangère
+    try {
+      const newTodo = await todoPgService.createTodo(todoData);
+      res.status(201).json(newTodo);
+    } catch (error) {
+      if (error.message && error.message.includes('foreign key constraint')) {
+        console.error('Violation de la contrainte de clé étrangère - userId:', todoData.userId);
+        return res.status(400).json({ 
+          error: 'Impossible de créer la tâche: votre session semble invalide', 
+          details: 'Référence utilisateur invalide, veuillez vous reconnecter'
+        });
+      }
+      // Relancer l'erreur pour qu'elle soit traitée par le bloc catch principal
+      throw error;
+    }
   } catch (error) {
     console.error('Erreur lors de la création de la tâche:', error);
     

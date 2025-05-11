@@ -88,7 +88,23 @@ const defineTodoModel = () => {
       references: {
         model: 'User', // Nom exact de la table User (corrigé)
         key: 'id'
-      }
+      },
+      validate: {
+        isValidUUID(value) {
+          if (value === null || value === undefined) {
+            return; // Permettre les valeurs null/undefined
+          }
+          
+          // Vérifier si c'est un UUID valide
+          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+          if (!uuidRegex.test(value)) {
+            console.warn(`[TODOPG] ID utilisateur invalide: ${value}`);
+            throw new Error('L\'ID utilisateur n\'est pas au format UUID valide');
+          }
+        }
+      },
+      onUpdate: 'CASCADE', // Si l'utilisateur est mis à jour, mettre à jour les tâches
+      onDelete: 'SET NULL' // Si l'utilisateur est supprimé, conserver les tâches mais sans référence
     }
   }, {
     // Options du modèle

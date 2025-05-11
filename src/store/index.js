@@ -558,10 +558,22 @@ export default createStore({
         
         // Extraction plus précise du message d'erreur
         let errorMessage = 'Erreur lors de la création de la tâche';
+        let needReconnect = false;
+        
         if (error.response) {
           errorMessage = error.response.data?.error || 
                         `Erreur serveur: ${error.response.status} ${error.response.statusText}`;
           console.error(`Erreur API détaillée:`, error.response.data);
+          
+          // Détecter les erreurs de clé étrangère et d'authentification
+          if (error.response.data?.details && (
+              error.response.data.details.includes('foreign key constraint') ||
+              error.response.data.details.includes('Référence utilisateur invalide')
+          )) {
+            console.log('[DEBUG] Erreur de clé étrangère ou référence utilisateur invalide détectée');
+            errorMessage = 'Votre session semble expirée ou invalide. Veuillez vous reconnecter.';
+            needReconnect = true;
+          }
           
           // IMPORTANT: Si c'est une erreur 400, c'est une erreur de validation, pas d'authentification
           if (error.response.status === 400) {
@@ -575,6 +587,25 @@ export default createStore({
         }
         
         commit('SET_ERROR', errorMessage);
+        
+        // Si une reconnexion est nécessaire, rediriger vers la page de connexion
+        if (needReconnect) {
+          console.log('[DEBUG] Redirection vers la page de connexion suite à une erreur de session');
+          commit('SET_NOTIFICATION_STATUS', {
+            success: false,
+            message: 'Session expirée. Veuillez vous reconnecter.'
+          });
+          
+          // Attendre un peu avant de rediriger
+          setTimeout(() => {
+            if (window.location.pathname !== '/login') {
+              window.location.href = '/login';
+            }
+          }, 2000);
+          
+          commit('SET_LOADING', false);
+          return { success: false, error: errorMessage, needReconnect: true };
+        }
         
         // Si pas de réponse du serveur, utiliser le stockage local
         if (!error.response) {
