@@ -73,8 +73,77 @@ const registerUser = async (userData) => {
     console.log('[AUTH] Création du nouvel utilisateur avec les données:', 
       { ...userToCreate, password: '***MASQUÉ***' });
     
-    // Créer le nouvel utilisateur
-    const newUser = await UserModel.create(userToCreate);
+    // Vérifier que notre UserModel est bien un modèle Sequelize et pas en mémoire
+    console.log('[AUTH] Type de UserModel:', typeof UserModel.create, 'isUsingMemoryMode:', UserModel.isUsingMemoryMode === true);
+    
+    // Vérifier l'état de la connexion à la base de données
+    const sequelize = getSequelize();
+    let dbState = 'non disponible';
+    if (sequelize) {
+      try {
+        const [result] = await sequelize.query('SELECT 1');
+        dbState = result ? 'connectée' : 'problème de requête';
+      } catch (dbError) {
+        dbState = `erreur: ${dbError.message}`;
+      }
+    }
+    console.log('[AUTH] État de la base de données:', dbState);
+    
+    // Essayer de créer directement avec SQL si nécessaire
+    let newUser;
+    try {
+      // Essayer la méthode normale d'abord
+      console.log('[AUTH] Tentative de création via Sequelize.create()');
+      newUser = await UserModel.create(userToCreate);
+    } catch (createError) {
+      console.error('[AUTH] Erreur lors de la création via Sequelize:', createError);
+      
+      // Essayer via SQL direct en cas d'échec
+      if (sequelize) {
+        try {
+          console.log('[AUTH] Tentative de création via SQL direct');
+          // Hasher le mot de passe avant insertion
+          const salt = await bcrypt.genSalt(10);
+          const hashedPassword = await bcrypt.hash(userToCreate.password, salt);
+          
+          // Générer un UUID pour l'ID
+          const [idResult] = await sequelize.query("SELECT gen_random_uuid() as id");
+          const userId = idResult[0]?.id;
+          
+          const now = new Date().toISOString();
+          
+          // Insérer directement dans la table
+          const [insertResult] = await sequelize.query(`
+            INSERT INTO "User" (id, username, email, password, "isAdmin", "createdAt", "updatedAt")
+            VALUES (:id, :username, :email, :password, :isAdmin, :createdAt, :updatedAt)
+            RETURNING id, username, email, "isAdmin", "createdAt"
+          `, {
+            replacements: {
+              id: userId,
+              username: userToCreate.username,
+              email: userToCreate.email,
+              password: hashedPassword,
+              isAdmin: userToCreate.isAdmin,
+              createdAt: now,
+              updatedAt: now
+            }
+          });
+          
+          if (insertResult && insertResult.length > 0) {
+            console.log('[AUTH] Utilisateur créé avec SQL direct:', insertResult[0].id);
+            newUser = insertResult[0];
+          } else {
+            throw new Error('Aucun résultat retourné par l\'insertion');
+          }
+        } catch (sqlError) {
+          console.error('[AUTH] Échec également via SQL direct:', sqlError);
+          throw sqlError;
+        }
+      } else {
+        throw createError;
+      }
+    }
+    
     console.log('[AUTH] Utilisateur créé avec succès:', newUser.id);
     
     // Générer un token JWT

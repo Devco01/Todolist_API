@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const notificationService = require('./services/notificationServicePg');
-const { connectPostgres } = require('./config/postgres');
+const { connectPostgres, getSequelize } = require('./config/postgres');
 const { initUserModel } = require('./models/UserPg');
 const { syncTodoModel } = require('./models/TodoPg');
 const app = express();
@@ -10,19 +10,84 @@ const app = express();
 // Connexion à PostgreSQL et initialisation des modèles
 (async () => {
   try {
-    await connectPostgres();
-    console.log('PostgreSQL connecté au démarrage');
+    console.log('=============================================');
+    console.log('= DÉMARRAGE DU SERVEUR AVEC DIAGNOSTICS DB =');
+    console.log('=============================================');
+    
+    // Vérifier les variables d'environnement
+    const postgresUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL;
+    if (!postgresUrl) {
+      console.error('⚠️ AUCUNE URL POSTGRESQL DÉFINIE!');
+      console.error('Créez un fichier .env avec POSTGRES_URL=postgres://user:password@host:port/database');
+    } else {
+      console.log('✅ URL PostgreSQL trouvée:', postgresUrl.replace(/\/\/([^:]+):([^@]+)@/, '//***:***@'));
+    }
+    
+    // Connexion à PostgreSQL
+    const connection = await connectPostgres();
+    if (connection) {
+      console.log('✅ PostgreSQL connecté avec succès');
+      
+      // Vérifier si la table User existe
+      try {
+        const [checkResults] = await connection.query(`
+          SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_name = 'User'
+          );
+        `);
+        const tableExists = checkResults[0]?.exists === true;
+        console.log(tableExists ? '✅ Table User existe' : '⚠️ Table User n\'existe PAS');
+        
+        // Si la table existe, vérifier les colonnes
+        if (tableExists) {
+          const [columns] = await connection.query(`
+            SELECT column_name, data_type 
+            FROM information_schema.columns 
+            WHERE table_name = 'User'
+          `);
+          console.log('Colonnes de la table User:');
+          columns.forEach(col => {
+            console.log(`  - ${col.column_name} (${col.data_type})`);
+          });
+        }
+      } catch (checkError) {
+        console.error('⚠️ Erreur lors de la vérification de la table:', checkError);
+      }
+    } else {
+      console.error('❌ Échec de connexion à PostgreSQL');
+    }
     
     // Force initialiser le modèle User (important: fait avant toute route)
-    console.log('Initialisation forcée du modèle User dans server.js...');
+    console.log('\nInitialisation forcée du modèle User dans server.js...');
     const forceSync = process.env.NODE_ENV === 'production' || process.env.FORCE_SYNC === 'true';
-    await initUserModel(forceSync);
+    const userInit = await initUserModel(forceSync);
+    console.log(userInit ? '✅ Modèle User initialisé avec succès' : '❌ Échec d\'initialisation du modèle User');
     
     // Synchroniser le modèle Todo après User
-    await syncTodoModel(forceSync);
-    console.log('Modèles synchronisés avec succès dans server.js');
+    const todoInit = await syncTodoModel(forceSync);
+    console.log(todoInit ? '✅ Modèle Todo synchronisé avec succès' : '❌ Échec de synchronisation du modèle Todo');
+    
+    // Vérifier à nouveau si la table User existe
+    if (connection) {
+      try {
+        const [checkResults] = await connection.query(`
+          SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_name = 'User'
+          );
+        `);
+        const tableExists = checkResults[0]?.exists === true;
+        console.log(tableExists ? '✅ Table User existe après initialisation' : '⚠️ Table User toujours ABSENTE après initialisation!');
+      } catch (recheckError) {
+        console.error('⚠️ Erreur lors de la vérification de la table après initialisation:', recheckError);
+      }
+    }
+    
+    console.log('=============================================');
+    
   } catch (err) {
-    console.error('Échec de la connexion/initialisation:', err);
+    console.error('❌ Échec de la connexion/initialisation:', err);
   }
 })();
 
