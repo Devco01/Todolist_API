@@ -802,8 +802,31 @@ export default createStore({
       }
     },
     // Action pour déconnecter l'utilisateur
-    async logout({ commit }) {
+    async logout({ commit, state }) {
       try {
+        // Si nous avons des tâches non synchronisées, essayer de les sauvegarder
+        if (state.todos && state.todos.length > 0) {
+          console.log(`[DEBUG] Tentative de sauvegarde de ${state.todos.length} tâches avant déconnexion`);
+          
+          // Pour chaque tâche, vérifier si elle a un ID et tenter de la sauvegarder
+          for (const todo of state.todos) {
+            try {
+              // Si la tâche a un ID (déjà sauvegardée précédemment)
+              if (todo._id || todo.id) {
+                console.log(`[DEBUG] Mise à jour de la tâche ${todo._id || todo.id} avant déconnexion`);
+                await axios.put(`/todos/${todo._id || todo.id}`, todo);
+              } else {
+                // Si la tâche n'a pas d'ID (nouvelle tâche non sauvegardée)
+                console.log(`[DEBUG] Sauvegarde d'une nouvelle tâche avant déconnexion`);
+                await axios.post('/todos', todo);
+              }
+            } catch (saveError) {
+              console.error(`[DEBUG] Erreur lors de la sauvegarde de tâche avant déconnexion:`, saveError);
+              // Continuer avec les autres tâches même si celle-ci échoue
+            }
+          }
+        }
+        
         // Appeler l'API de déconnexion
         await axios.get('/auth/logout');
       } catch (error) {

@@ -60,6 +60,11 @@ export default {
     const syncTodos = async () => {
       try {
         console.log('Synchronisation périodique des tâches...');
+        
+        // Tenter d'abord une synchronisation d'urgence (push des modifications locales)
+        await emergencySyncTodos();
+        
+        // Puis récupérer les tâches du serveur (pull des modifications distantes)
         await store.dispatch('fetchTodos');
       } catch (error) {
         console.error('Erreur lors de la synchronisation périodique:', error);
@@ -96,6 +101,41 @@ export default {
       }
     };
     
+    // Fonction pour synchroniser d'urgence toutes les tâches avec le serveur
+    const emergencySyncTodos = async () => {
+      try {
+        const todos = store.state.todos;
+        if (!Array.isArray(todos) || todos.length === 0) {
+          console.log('[DEBUG] Pas de tâches à synchroniser en urgence');
+          return;
+        }
+        
+        console.log(`[DEBUG] Synchronisation d'urgence de ${todos.length} tâches...`);
+        
+        // Tentative rapide de sauvegarde via l'API
+        for (const todo of todos) {
+          try {
+            // Si la tâche a un ID (déjà sauvegardée précédemment)
+            if (todo._id || todo.id) {
+              console.log(`[DEBUG] Mise à jour d'urgence de la tâche ${todo._id || todo.id}`);
+              await axios.put(`/todos/${todo._id || todo.id}`, todo);
+            } else {
+              // Si la tâche n'a pas d'ID (nouvelle tâche non sauvegardée)
+              console.log(`[DEBUG] Sauvegarde d'urgence d'une nouvelle tâche`);
+              await axios.post('/todos', todo);
+            }
+          } catch (e) {
+            console.error(`[DEBUG] Erreur lors de la sauvegarde d'urgence:`, e);
+            // Continuer avec les autres tâches même si celle-ci échoue
+          }
+        }
+        
+        console.log('[DEBUG] Synchronisation d\'urgence terminée');
+      } catch (error) {
+        console.error('[DEBUG] Erreur lors de la synchronisation d\'urgence:', error);
+      }
+    };
+    
     // Fonction pour récupérer l'utilisateur si les informations sont perdues
     const recoverUserIfNeeded = async () => {
       try {
@@ -114,6 +154,54 @@ export default {
           
           // Forcer le token dans les headers avant l'appel
           axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+          
+          // Tentative de récupération des informations utilisateur avec intercepteur spécial pour token
+          try {
+            const response = await axios.get('/auth/me', {
+              transformResponse: [data => {
+                const parsedData = JSON.parse(data);
+                return parsedData;
+              }],
+              validateStatus: status => status < 500 // Accepter les codes 2xx-4xx
+            });
+            
+            // Vérifier si un nouveau token a été fourni dans l'en-tête
+            const newToken = response.headers['x-auth-token'];
+            if (newToken) {
+              console.log('[DEBUG] Nouveau token reçu, mise à jour du localStorage');
+              localStorage.setItem('authToken', newToken);
+              axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
+            }
+            
+            if (response.status === 200 && response.data.success && response.data.user) {
+              console.log('[DEBUG] Session récupérée avec succès, mise à jour de l\'utilisateur');
+              store.commit('SET_USER', response.data.user);
+              store.commit('SET_AUTHENTICATED', true);
+              
+              // Sauvegarder l'utilisateur dans localStorage également
+              localStorage.setItem('user', JSON.stringify(response.data.user));
+              
+              // Session est valide, continuer
+              console.log('[DEBUG] Récupération session réussie ✓');
+              return true;
+            } else {
+              console.log('[DEBUG] Échec de la récupération de session, réponse invalide:', response.status);
+              return false;
+            }
+          } catch (error) {
+            console.error('[DEBUG] Erreur lors de la récupération de la session:', error);
+            
+            // Si l'erreur indique une expiration de session mais qu'il s'agit d'une route sécurisée,
+            // ne pas déconnecter pour éviter la perte de données
+            if (error.response && error.response.status === 401) {
+              console.warn('[DEBUG] Session expirée ou token invalide');
+              // Ne pas effacer les données tout de suite
+            } else {
+              console.error('[DEBUG] Autre type d\'erreur lors de la récupération:', error);
+            }
+            
+            return false;
+          }
           
           // Tentative de récupération des informations utilisateur
           await store.dispatch('checkAuth');
@@ -138,12 +226,58 @@ export default {
       }
     };
     
+    // Fonction pour envoyer un ping au serveur et maintenir la session
+    const pingServer = async () => {
+      try {
+        console.log('[DEBUG] Envoi d\'un ping pour maintenir la session active...');
+        const token = localStorage.getItem('authToken');
+        
+        if (!token) {
+          console.log('[DEBUG] Pas de token, ping annulé');
+          return false;
+        }
+        
+        // Utiliser l'endpoint sécurisé pour le ping avec le token d'authentification
+        const response = await axios.get('/keep-alive/secure', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        // Vérifier si un nouveau token est fourni dans l'en-tête de réponse
+        const newToken = response.headers['x-auth-token'];
+        if (newToken && newToken !== token) {
+          console.log('[DEBUG] Nouveau token reçu dans le ping, mise à jour');
+          localStorage.setItem('authToken', newToken);
+          axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
+        }
+        
+        console.log('[DEBUG] Ping réussi, session maintenue active');
+        return true;
+      } catch (error) {
+        console.error('[DEBUG] Erreur lors du ping:', error);
+        
+        // Si l'erreur est 401, la session a expiré
+        if (error.response && error.response.status === 401) {
+          console.warn('[DEBUG] Session expirée détectée lors du ping');
+          // Tenter de récupérer la session
+          const recovered = await recoverUserIfNeeded();
+          return recovered;
+        }
+        
+        return false;
+      }
+    };
+    
     // Charger les tâches au démarrage de l'application
     onMounted(async () => {
       console.log('[DEBUG] Application démarrée - Initialisation...');
       
       // Tenter de récupérer l'utilisateur si les informations sont partiellement disponibles
       await recoverUserIfNeeded();
+      
+      // Effectuer un ping immédiat pour maintenir la session active
+      await pingServer();
       
       // Vérifier l'authentification de l'utilisateur
       try {
@@ -284,14 +418,20 @@ export default {
         // Force sauvegarder après tout le processus pour s'assurer que les données sont persistées
         window.setTimeout(forceSaveTodos, 500);
         
-        // Configurer la synchronisation périodique (toutes les 5 minutes)
-        syncInterval = setInterval(syncTodos, 5 * 60 * 1000);
+        // Configurer la synchronisation périodique (toutes les 2 minutes)
+        syncInterval = setInterval(syncTodos, 2 * 60 * 1000);
         
         // Configurer une vérification périodique de l'authentification (toutes les 10 minutes)
         const authCheckInterval = setInterval(async () => {
           console.log('[DEBUG] Vérification périodique de l\'authentification...');
           await recoverUserIfNeeded();
         }, 10 * 60 * 1000);
+        
+        // Configurer le ping périodique pour maintenir la session active (toutes les 3 minutes)
+        const pingInterval = setInterval(async () => {
+          console.log('[DEBUG] Envoi du ping périodique...');
+          await pingServer();
+        }, 3 * 60 * 1000);
         
         // Ajout d'une sauvegarde périodique toutes les 30 secondes
         const saveInterval = setInterval(forceSaveTodos, 30 * 1000);
@@ -308,9 +448,25 @@ export default {
         });
         
         // Sauvegarder avant fermeture de la page
-        window.addEventListener('beforeunload', () => {
+        window.addEventListener('beforeunload', async (event) => {
           console.log('[DEBUG] Page en cours de fermeture - Sauvegarde des tâches');
+          
+          // Tentative de synchronisation d'urgence
+          try {
+            await emergencySyncTodos();
+          } catch (e) {
+            console.error('[DEBUG] Échec de la synchronisation d\'urgence:', e);
+          }
+          
+          // Sauvegarde locale en dernier recours
           forceSaveTodos();
+          
+          // Demander confirmation si des modifications sont en cours (optionnel)
+          if (store.state.todos.length > 0) {
+            event.preventDefault();
+            event.returnValue = 'Vos tâches sont en cours de sauvegarde. Êtes-vous sûr de vouloir quitter la page ?';
+            return event.returnValue;
+          }
         });
         
         // Nettoyer les intervalles lors de la destruction
@@ -318,6 +474,7 @@ export default {
           clearInterval(syncInterval);
           clearInterval(saveInterval);
           clearInterval(authCheckInterval);
+          clearInterval(pingInterval);
           document.removeEventListener('visibilitychange', handleVisibilityChange);
         });
       } catch (error) {

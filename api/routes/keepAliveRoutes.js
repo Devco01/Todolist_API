@@ -2,6 +2,38 @@ const express = require('express');
 const router = express.Router();
 const { getSequelize } = require('../config/postgres');
 const os = require('os');
+const authService = require('../services/authService');
+const { protect } = require('../middleware/authMiddleware');
+
+// Version sécurisée avec authentification
+router.get('/secure', protect, (req, res) => {
+  try {
+    // L'utilisateur est authentifié ici (grâce au middleware protect)
+    const { user } = req;
+    
+    // Renouveler le token
+    const newToken = authService.generateToken(user);
+    
+    // Ajouter le nouveau token à l'en-tête de réponse
+    res.setHeader('x-auth-token', newToken);
+    
+    return res.status(200).json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      message: 'Session maintenue active',
+      user: {
+        id: user.id,
+        username: user.username
+      }
+    });
+  } catch (error) {
+    console.error('Erreur dans le keep-alive sécurisé:', error);
+    return res.status(500).json({
+      status: 'error',
+      error: error.message
+    });
+  }
+});
 
 // Endpoint pour le service de monitoring (comme UptimeRobot)
 // GET /api/keep-alive

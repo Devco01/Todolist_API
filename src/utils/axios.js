@@ -66,6 +66,16 @@ instance.interceptors.response.use(
   response => {
     console.log(`[AXIOS] Réponse reçue: ${response.status} ${response.statusText} pour ${response.config.url}`);
     
+    // Vérifier si un nouveau token a été fourni dans l'en-tête de réponse
+    const newToken = response.headers['x-auth-token'];
+    if (newToken) {
+      console.log('[AXIOS] Nouveau token reçu, mise à jour du localStorage');
+      // Mettre à jour le token dans le localStorage
+      localStorage.setItem('authToken', newToken);
+      // Mettre à jour le token dans les en-têtes par défaut
+      instance.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
+    }
+    
     // Compatibilité PostgreSQL (id) et MongoDB (_id)
     if (response.data) {
       // Si on a un tableau de résultats
