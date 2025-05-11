@@ -70,14 +70,29 @@ instance.interceptors.response.use(
     
     // Gérer les erreurs d'authentification (401)
     if (error.response && error.response.status === 401) {
-      console.warn('[AXIOS] Session expirée ou non authentifiée');
-      // Nettoyer les données d'authentification
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('user');
+      // Vérifier si l'erreur vient d'une route autre que l'authentification ou la modification de données
+      const url = error.config?.url || '';
       
-      // Rediriger vers la page de connexion si nécessaire
-      if (window.location.pathname !== '/login') {
-        window.location.href = '/login';
+      // Mettre à jour la liste des routes sécurisées pour inclure tous les endpoints de modification
+      const isSafeRoute = 
+        url.includes('/todos') || 
+        url.includes('/notifications') || 
+        url.includes('/keep-alive') ||
+        url.includes('/api/todos') ||
+        url.includes('/api/notifications');
+      
+      if (!isSafeRoute) {
+        console.warn('[AXIOS] Session expirée ou non authentifiée');
+        // Nettoyer les données d'authentification
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('user');
+        
+        // Rediriger vers la page de connexion si nécessaire
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
+      } else {
+        console.warn(`[AXIOS] Erreur 401 sur route sécurisée (${url}), ignorée pour éviter déconnexion automatique pendant modification des données`);
       }
     }
     
