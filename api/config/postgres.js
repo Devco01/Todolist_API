@@ -1,121 +1,114 @@
 const { Sequelize } = require('sequelize');
-const config = require('./config');
+const dotenv = require('dotenv');
+const path = require('path');
 
-// Variable pour stocker l'instance Sequelize
+// Charger les variables d'environnement
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+
+// Instance Sequelize
 let sequelize = null;
 
-// Fonction pour se connecter à PostgreSQL
+// Établir une connexion à PostgreSQL
 const connectPostgres = async () => {
   try {
-    console.log('[POSTGRES] Démarrage du processus de connexion à PostgreSQL');
+    console.log('[PG] Tentative de connexion à PostgreSQL...');
     
-    // Vérifier si le package pg est installé
-    try {
-      require('pg');
-      console.log('[POSTGRES] Package pg trouvé et chargé avec succès');
-    } catch (pgError) {
-      console.error('[POSTGRES] Erreur lors du chargement du package pg:', pgError.message);
-      console.error('[POSTGRES] Tentative d\'installation automatique du package pg...');
-      
-      // Sur Vercel, on ne peut pas installer dynamiquement
-      if (process.env.VERCEL === '1') {
-        console.error('[POSTGRES] Environnement Vercel détecté. Installation dynamique impossible.');
-        console.error('[POSTGRES] Veuillez ajouter pg aux dépendances et redéployer l\'application.');
-        return null;
-      }
-      
-      // On pourrait tenter d'installer dynamiquement mais c'est risqué
-      return null;
-    }
-
-    // Si déjà connecté, retourner l'instance existante
-    if (sequelize) {
-      console.log('[POSTGRES] Connexion existante réutilisée');
-      return sequelize;
-    }
-
-    // Récupérer l'URL de connexion depuis les variables d'environnement
-    const postgresUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL;
+    // Récupérer les informations de connexion depuis les variables d'environnement
+    const pgUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL;
     
-    if (!postgresUrl) {
-      console.warn('[POSTGRES] Aucune URL PostgreSQL définie, utilisation du stockage en mémoire uniquement');
-      console.log('[POSTGRES] Variables d\'environnement disponibles:', Object.keys(process.env).filter(key => 
-        key.includes('DB') || key.includes('SQL') || key.includes('POSTGRES')));
-      return null;
+    if (!pgUrl) {
+      console.error('[PG] Erreur: URL PostgreSQL non définie dans les variables d\'environnement');
+      return false;
     }
     
-    console.log('[POSTGRES] URL PostgreSQL trouvée, tentative de connexion...');
-    console.log('[POSTGRES] Format de l\'URL:', postgresUrl.split('@')[0].replace(/:[^:]*@/, ':***@'));
+    // Nettoyer et masquer l'URL pour la journalisation (ne pas afficher les identifiants)
+    const maskedUrl = pgUrl.replace(/\/\/([^:]+):([^@]+)@/, '//***:***@');
+    console.log('[PG] URL de connexion PostgreSQL:', maskedUrl);
     
-    // Options SSL pour Neon - assouplies en développement
-    const dialectOptions = process.env.NODE_ENV === 'production' 
-      ? {
-          ssl: {
-            require: true,
-            rejectUnauthorized: false
-          }
+    // Options de connexion
+    const options = {
+      logging: (msg) => console.log('[PG-SQL]', msg),
+      dialectOptions: {
+        ssl: {
+          require: process.env.NODE_ENV === 'production',
+          rejectUnauthorized: false
         }
-      : {
-          ssl: {
-            require: false,
-            rejectUnauthorized: false
-          }
-        };
-    
-    console.log(`[POSTGRES] Configuration SSL: ${process.env.NODE_ENV === 'production' ? 'Stricte (production)' : 'Assouplie (développement)'}`);
-
-    // Créer une nouvelle instance Sequelize
-    sequelize = new Sequelize(postgresUrl, {
-      dialect: 'postgres',
-      dialectOptions,
-      logging: process.env.NODE_ENV === 'development',
-      pool: {
-        max: 5,
-        min: 0,
-        acquire: 30000,
-        idle: 10000
       }
-    });
+    };
     
-    // Tester la connexion
-    console.log('[POSTGRES] Instance Sequelize créée, test de la connexion...');
+    // Créer une nouvelle instance Sequelize si elle n'existe pas déjà
+    if (!sequelize) {
+      sequelize = new Sequelize(pgUrl, options);
+      console.log('[PG] Instance Sequelize créée');
+    }
+    
+    // Vérifier la connexion
     await sequelize.authenticate();
+    console.log('[PG] Connexion à PostgreSQL établie avec succès');
     
-    console.log('[POSTGRES] PostgreSQL connecté avec succès');
-    
-    // Mettre l'application globale au courant de la connexion
-    if (global.app) {
-      global.app.set('isPostgresConnected', true);
+    // Vérifier les tables existantes
+    try {
+      const [results] = await sequelize.query(`
+        SELECT table_name 
+        FROM information_schema.tables 
+        WHERE table_schema = 'public'
+      `);
+      
+      const tables = results.map(r => r.table_name);
+      console.log('[PG] Tables existantes dans la base de données:', tables.join(', ') || 'Aucune');
+    } catch (tableError) {
+      console.error('[PG] Erreur lors de la vérification des tables:', tableError);
     }
     
-    return sequelize;
+    return true;
   } catch (error) {
-    console.error('[POSTGRES] Erreur de connexion à PostgreSQL:', error.message);
-    console.error('[POSTGRES] Détails supplémentaires:', error);
+    console.error('[PG] Erreur de connexion à PostgreSQL:', error);
     
-    // Si on est sur Vercel, on peut continuer sans Postgres
-    if (process.env.VERCEL === '1') {
-      console.log('[POSTGRES] Exécution sur Vercel, poursuite sans PostgreSQL');
+    // Afficher des informations supplémentaires pour faciliter le débogage
+    console.error('[PG] Détails de l\'erreur:', error.original || error.parent || 'Pas de détails disponibles');
+    
+    if (error.name === 'SequelizeConnectionError') {
+      console.error('[PG] Problème de connexion - Vérifiez l\'URL et les identifiants');
     }
     
-    // En mode développement, on peut fonctionner sans base de données
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('[POSTGRES] Mode développement : l\'application utilisera le stockage en mémoire');
+    if (error.name === 'SequelizeHostNotFoundError') {
+      console.error('[PG] Hôte non trouvé - Vérifiez l\'URL et la connectivité réseau');
     }
     
-    // Mettre l'application globale au courant de la connexion
-    if (global.app) {
-      global.app.set('isPostgresConnected', false);
+    if (error.name === 'SequelizeConnectionRefusedError') {
+      console.error('[PG] Connexion refusée - Vérifiez que le serveur PostgreSQL est bien démarré');
     }
     
-    return null;
+    // Tentative de reconnexion avec des options différentes
+    try {
+      if (process.env.POSTGRES_URL || process.env.DATABASE_URL) {
+        console.log('[PG] Tentative de reconnexion sans SSL...');
+        
+        // Options sans SSL pour test
+        sequelize = new Sequelize(process.env.POSTGRES_URL || process.env.DATABASE_URL, {
+          logging: false,
+          dialectOptions: {
+            ssl: false
+          }
+        });
+        
+        await sequelize.authenticate();
+        console.log('[PG] Reconnexion réussie sans SSL');
+        return true;
+      }
+    } catch (retryError) {
+      console.error('[PG] Échec de la tentative de reconnexion:', retryError.message);
+    }
+    
+    return false;
   }
 };
 
-// Fonction pour obtenir l'instance Sequelize
-const getSequelize = () => sequelize;
+// Récupérer l'instance Sequelize
+const getSequelize = () => {
+  return sequelize;
+};
 
-// Exporter les fonctions et l'instance
 module.exports = {
   connectPostgres,
   getSequelize

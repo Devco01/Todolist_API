@@ -215,12 +215,139 @@ const syncTodoModel = async (force = false) => {
     const forceSync = process.env.FORCE_SYNC === 'true' || force;
     console.log(`[TODOPG] Synchronisation avec force=${forceSync}`);
     
+    // Tenter de créer la table manuellement avant la synchronisation
+    try {
+      const sequelize = getSequelize();
+      if (sequelize) {
+        console.log('[TODOPG] Tentative de création manuelle de la table Todo avant synchronisation');
+        
+        await sequelize.query(`
+          CREATE TABLE IF NOT EXISTS "Todo" (
+            id SERIAL PRIMARY KEY,
+            title VARCHAR(255) NOT NULL,
+            description TEXT,
+            "dueDate" DATE,
+            "dueTime" VARCHAR(255),
+            category VARCHAR(255) DEFAULT 'autre',
+            priority VARCHAR(255) DEFAULT 'medium',
+            completed BOOLEAN DEFAULT false,
+            "notificationEmail" VARCHAR(255),
+            "notificationsEnabled" BOOLEAN DEFAULT false,
+            "notificationSent" BOOLEAN DEFAULT false,
+            "userId" UUID REFERENCES "User"(id) ON DELETE SET NULL,
+            "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+            "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+          )
+        `);
+        
+        // Vérifier si la table a bien été créée
+        const [checkResults] = await sequelize.query(`
+          SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_name = 'Todo'
+          );
+        `);
+        
+        const tableExists = checkResults[0]?.exists === true;
+        console.log('[TODOPG] Vérification après création manuelle: Table Todo existe =', tableExists);
+      }
+    } catch (manualError) {
+      console.error('[TODOPG] Erreur lors de la création manuelle de la table:', manualError);
+      
+      // Essayer une approche alternative en cas d'échec
+      try {
+        const sequelize = getSequelize();
+        if (sequelize) {
+          console.log('[TODOPG] Tentative alternative de création de table Todo');
+          
+          // Essayer sans les références au modèle User
+          await sequelize.query(`
+            CREATE TABLE IF NOT EXISTS "Todo" (
+              id SERIAL PRIMARY KEY,
+              title VARCHAR(255) NOT NULL,
+              description TEXT,
+              "dueDate" VARCHAR(255),
+              "dueTime" VARCHAR(255),
+              category VARCHAR(255),
+              priority VARCHAR(255),
+              completed BOOLEAN DEFAULT false,
+              "notificationEmail" VARCHAR(255),
+              "notificationsEnabled" BOOLEAN DEFAULT false,
+              "notificationSent" BOOLEAN DEFAULT false,
+              "userId" VARCHAR(255),
+              "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+              "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+          `);
+          
+          console.log('[TODOPG] Table Todo créée avec méthode alternative');
+        }
+      } catch (altError) {
+        console.error('[TODOPG] Échec de la tentative alternative:', altError);
+      }
+    }
+    
     // Synchroniser le modèle
     await Todo.sync({ force: forceSync });
     console.log('[TODOPG] Modèle Todo synchronisé avec la base de données');
+    
+    // Vérifier à nouveau que la table existe
+    try {
+      const sequelize = getSequelize();
+      if (sequelize) {
+        const [checkResults] = await sequelize.query(`
+          SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_name = 'Todo'
+          );
+        `);
+        
+        const tableExists = checkResults[0]?.exists === true;
+        console.log('[TODOPG] Vérification finale: Table Todo existe =', tableExists);
+        
+        // Si la table existe, vérifier les colonnes
+        if (tableExists) {
+          const [columns] = await sequelize.query(`
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'Todo'
+          `);
+          
+          console.log('[TODOPG] Colonnes de la table Todo:', columns.map(col => col.column_name).join(', '));
+        }
+      }
+    } catch (checkError) {
+      console.error('[TODOPG] Erreur lors de la vérification finale de la table:', checkError);
+    }
+    
     return true;
   } catch (error) {
     console.error('[TODOPG] Erreur lors de la synchronisation du modèle Todo:', error);
+    
+    // Dernière tentative de création de table en cas d'échec total
+    try {
+      console.log('[TODOPG] Tentative de dernier recours pour créer la table Todo');
+      const sequelize = getSequelize();
+      if (sequelize) {
+        // Version simplifiée sans contraintes
+        await sequelize.query(`
+          CREATE TABLE IF NOT EXISTS "Todo" (
+            id SERIAL PRIMARY KEY,
+            title VARCHAR(255) NOT NULL,
+            description TEXT,
+            "userId" VARCHAR(255),
+            "createdAt" TIMESTAMP DEFAULT NOW(),
+            "updatedAt" TIMESTAMP DEFAULT NOW()
+          )
+        `);
+        
+        console.log('[TODOPG] Table Todo créée avec structure minimale');
+        return true;
+      }
+    } catch (lastError) {
+      console.error('[TODOPG] Échec de la tentative de dernier recours:', lastError);
+    }
+    
     return false;
   }
 };
