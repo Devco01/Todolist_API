@@ -32,6 +32,35 @@ instance.interceptors.request.use(
   }
 );
 
+// Fonction de nettoyage local pour les erreurs 404
+const handleLocalDelete = (id) => {
+  try {
+    console.log('[AXIOS] Tentative de suppression locale pour ID:', id);
+    // Récupérer les todos du localStorage
+    let localTodos = JSON.parse(localStorage.getItem('todos') || '[]');
+    const initialCount = localTodos.length;
+    
+    // Filtrer la tâche avec l'ID spécifié
+    localTodos = localTodos.filter(t => {
+      const todoId = t._id || t.id;
+      return todoId !== id && String(todoId) !== String(id);
+    });
+    
+    // Si une tâche a été supprimée, mettre à jour le localStorage
+    if (localTodos.length < initialCount) {
+      console.log('[AXIOS] Tâche supprimée localement avec succès');
+      localStorage.setItem('todos', JSON.stringify(localTodos));
+      return true;
+    }
+    
+    console.log('[AXIOS] Aucune tâche locale trouvée avec cet ID');
+    return false;
+  } catch (error) {
+    console.error('[AXIOS] Erreur lors de la suppression locale:', error);
+    return false;
+  }
+};
+
 // Intercepteur pour gérer les erreurs de connexion
 instance.interceptors.response.use(
   response => {
@@ -96,6 +125,31 @@ instance.interceptors.response.use(
       }
     }
     
+    // Gérer spécifiquement les erreurs 404 pour la suppression de tâches
+    if (error.response && 
+        error.response.status === 404 && 
+        error.config.url.includes('/todos/') && 
+        error.config.method.toLowerCase() === 'delete') {
+      
+      console.warn('[AXIOS] Tâche non trouvée en base de données lors de la suppression');
+      
+      // Extraire l'ID de la tâche à partir de l'URL
+      const taskId = error.config.url.split('/').pop();
+      
+      // Tenter de supprimer localement
+      const deleted = handleLocalDelete(taskId);
+      
+      if (deleted) {
+        console.log('[AXIOS] Suppression locale réussie, renvoi d\'une réponse simulée');
+        return Promise.resolve({
+          data: {
+            success: true,
+            message: 'Tâche supprimée localement uniquement'
+          }
+        });
+      }
+    }
+    
     // Si l'erreur est due à un problème de connexion au serveur
     if (!error.response) {
       console.warn('Erreur de connexion au serveur API. Utilisation du stockage local.');
@@ -148,35 +202,6 @@ instance.interceptors.response.use(
         offline: true,
         originalError: error
       });
-    }
-    
-    // Gérer spécifiquement les erreurs 404 pour les tâches qui existent en localStorage mais pas en BD
-    if (error.response && error.response.status === 404 && error.config.url.includes('/todos/')) {
-      console.warn('[AXIOS] Tâche non trouvée en BD mais peut exister en localStorage, tentative de fallback');
-      
-      // Récupérer l'ID de la tâche
-      const id = error.config.url.split('/').pop();
-      
-      // Récupérer les todos du localStorage
-      let localTodos = JSON.parse(localStorage.getItem('todos') || '[]');
-      
-      // Vérifier si la tâche existe en localStorage
-      const method = error.config.method;
-      
-      if (method === 'delete') {
-        // Pour la suppression, filtrer la tâche du localStorage
-        const todoExists = localTodos.some(t => t._id === id || t.id === id);
-        
-        if (todoExists) {
-          console.log('[AXIOS] Tâche trouvée en localStorage, suppression locale uniquement');
-          localTodos = localTodos.filter(t => t._id !== id && t.id !== id);
-          localStorage.setItem('todos', JSON.stringify(localTodos));
-          return Promise.resolve({ data: { success: true, message: 'Tâche supprimée localement' } });
-        }
-      }
-      
-      // Pour les autres méthodes ou si la tâche n'existe pas en localStorage
-      // On continue avec le rejet normal
     }
     
     // Pour les autres types d'erreurs, les remonter avec plus d'infos
