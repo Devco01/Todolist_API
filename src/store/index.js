@@ -31,6 +31,22 @@ const loadTodosFromStorage = () => {
       // Vérifier que c'est bien un tableau
       if (Array.isArray(parsedTodos)) {
         console.log(`[DEBUG] ${parsedTodos.length} todos chargés depuis localStorage`);
+        
+        // IMPORTANT: Filtrer par utilisateur actuel
+        const currentUser = JSON.parse(localStorage.getItem('user'));
+        const currentUserId = currentUser?.id;
+        
+        if (currentUserId) {
+          console.log(`[DEBUG] Filtrage des todos pour l'utilisateur actuel: ${currentUserId}`);
+          const filteredTodos = parsedTodos.filter(todo => {
+            // Garder les tâches de l'utilisateur actuel ou celles sans userId (compatibilité)
+            return !todo.userId || todo.userId === currentUserId;
+          });
+          
+          console.log(`[DEBUG] Après filtrage: ${filteredTodos.length}/${parsedTodos.length} todos correspondent à l'utilisateur actuel`);
+          return filteredTodos;
+        }
+        
         return parsedTodos
       } else {
         console.error('[DEBUG] Format de données invalide dans localStorage (pas un tableau):', parsedTodos);
@@ -352,6 +368,15 @@ export default createStore({
       state.isAuthenticated = value;
     },
     LOGOUT(state) {
+      // Vider les tâches du state avant de se déconnecter
+      state.todos = [];
+      
+      // Vider également le localStorage des todos pour éviter que les tâches
+      // d'un utilisateur soient visibles par un autre
+      localStorage.removeItem('todos');
+      console.log('[DEBUG] LOGOUT: Nettoyage des tâches dans localStorage et state');
+      
+      // Nettoyer les informations d'authentification
       state.user = null;
       state.isAuthenticated = false;
       localStorage.removeItem('user');
@@ -487,6 +512,14 @@ export default createStore({
           return { success: false, error: errorMessage };
         }
 
+        // IMPORTANT: S'assurer que l'ID de l'utilisateur est inclus si l'utilisateur est authentifié
+        if (state.isAuthenticated && state.user) {
+          if (!todo.userId) {
+            console.log('[DEBUG] Ajout automatique de l\'ID utilisateur à la tâche:', state.user.id);
+            todo.userId = state.user.id;
+          }
+        }
+
         const { data } = await axios.post('/todos', todo);
         console.log('Réponse API pour createTodo:', data);
         
@@ -528,11 +561,19 @@ export default createStore({
         if (!error.response) {
           console.log('Fallback: Utilisation du stockage local');
           commit('SET_OFFLINE_MODE', true);
+          
+          // CORRECTIF: Ajouter l'ID utilisateur en mode hors ligne également
           const newTodo = {
             ...todo,
             _id: Math.random().toString(36).substring(2, 15),
             createdAt: new Date().toISOString()
           };
+          
+          // S'assurer que l'ID utilisateur est présent en mode hors ligne aussi
+          if (state.isAuthenticated && state.user && !newTodo.userId) {
+            newTodo.userId = state.user.id;
+          }
+          
           commit('ADD_TODO', newTodo);
           commit('SET_LOADING', false);
           return { success: true, data: newTodo, offline: true };

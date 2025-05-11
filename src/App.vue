@@ -130,133 +130,146 @@ export default {
         } catch (localStorageError) {
           console.error('[DEBUG] Erreur d\'accès au localStorage:', localStorageError);
         }
+      } else {
+        // Si l'utilisateur n'est pas authentifié, nettoyer complètement le localStorage des tâches
+        console.log('[DEBUG] Utilisateur non authentifié - Nettoyage du localStorage');
+        localStorage.removeItem('todos');
+        store.commit('SET_TODOS', []);
+        
+        // Redirection vers la page de connexion si nécessaire
+        if (window.location.pathname !== '/login' && window.location.pathname !== '/register') {
+          console.log('[DEBUG] Utilisateur non authentifié - Redirection vers la page de connexion');
+          if (window.location) {
+            window.location.href = '/login';
+          }
+        }
+        
+        return; // Sortir de la fonction pour ne pas charger les tâches
+      }
       
-        // *** VÉRIFICATION SPÉCIALE DE LA SANTÉ DU LOCALSTORAGE ***
-        let localStorageWorking = true;
+      // *** VÉRIFICATION SPÉCIALE DE LA SANTÉ DU LOCALSTORAGE ***
+      let localStorageWorking = true;
+      try {
+        localStorage.setItem('test_health', 'ok');
+        const test = localStorage.getItem('test_health');
+        if (test !== 'ok') {
+          console.error('[DEBUG] Test de santé du localStorage échoué');
+          localStorageWorking = false;
+        } else {
+          localStorage.removeItem('test_health');
+        }
+      } catch (e) {
+        console.error('[DEBUG] Exception lors du test de santé du localStorage:', e);
+        localStorageWorking = false;
+      }
+      
+      // Récupérer d'abord les tâches du localStorage
+      let localTodos = null;
+      if (localStorageWorking) {
         try {
-          localStorage.setItem('test_health', 'ok');
-          const test = localStorage.getItem('test_health');
-          if (test !== 'ok') {
-            console.error('[DEBUG] Test de santé du localStorage échoué');
-            localStorageWorking = false;
-          } else {
-            localStorage.removeItem('test_health');
+          const rawData = localStorage.getItem('todos');
+          console.log('[DEBUG] Tâches trouvées dans localStorage au démarrage:', 
+            rawData ? `Oui (${rawData.length} caractères)` : 'Non');
+          
+          if (rawData && rawData.length > 2) { // Plus que juste "[]"
+            localTodos = JSON.parse(rawData);
+            
+            // Force sauvegarder dans le store si des tâches existent localement
+            // pour éviter de les perdre en cas d'échec de la récupération serveur
+            if (Array.isArray(localTodos) && localTodos.length > 0) {
+              console.log('[DEBUG] Sauvegarde préventive des tâches locales:', localTodos.length);
+              store.commit('SET_TODOS', localTodos);
+            }
           }
         } catch (e) {
-          console.error('[DEBUG] Exception lors du test de santé du localStorage:', e);
-          localStorageWorking = false;
+          console.error('[DEBUG] Erreur lors de la récupération directe depuis localStorage:', e);
         }
+      }
+      
+      // *** CORRECTIF CRITIQUE: MULTI-TENTATIVE DE RÉCUPÉRATION SERVEUR ***
+      // Fonction pour tenter de récupérer les données du serveur avec plusieurs essais
+      const fetchWithRetry = async (retries = 2, delay = 1000) => {
+        let lastError = null;
         
-        // Récupérer d'abord les tâches du localStorage
-        let localTodos = null;
-        if (localStorageWorking) {
+        for (let attempt = 0; attempt <= retries; attempt++) {
           try {
-            const rawData = localStorage.getItem('todos');
-            console.log('[DEBUG] Tâches trouvées dans localStorage au démarrage:', 
-              rawData ? `Oui (${rawData.length} caractères)` : 'Non');
+            if (attempt > 0) {
+              console.log(`[DEBUG] Tentative de récupération #${attempt}...`);
+            }
             
-            if (rawData && rawData.length > 2) { // Plus que juste "[]"
-              localTodos = JSON.parse(rawData);
-              
-              // Force sauvegarder dans le store si des tâches existent localement
-              // pour éviter de les perdre en cas d'échec de la récupération serveur
-              if (Array.isArray(localTodos) && localTodos.length > 0) {
-                console.log('[DEBUG] Sauvegarde préventive des tâches locales:', localTodos.length);
-                store.commit('SET_TODOS', localTodos);
-              }
+            // Essayer de récupérer les données depuis le serveur
+            const result = await store.dispatch('fetchTodos');
+            console.log('[DEBUG] Résultat de la récupération des tâches:', result);
+            
+            // Si réussi, sortir de la boucle
+            return result;
+          } catch (error) {
+            lastError = error;
+            console.error(`[DEBUG] Échec de la tentative #${attempt}:`, error);
+            
+            if (attempt < retries) {
+              console.log(`[DEBUG] Nouvelle tentative dans ${delay}ms...`);
+              await new Promise(resolve => setTimeout(resolve, delay));
             }
-          } catch (e) {
-            console.error('[DEBUG] Erreur lors de la récupération directe depuis localStorage:', e);
           }
         }
         
-        // *** CORRECTIF CRITIQUE: MULTI-TENTATIVE DE RÉCUPÉRATION SERVEUR ***
-        // Fonction pour tenter de récupérer les données du serveur avec plusieurs essais
-        const fetchWithRetry = async (retries = 2, delay = 1000) => {
-          let lastError = null;
-          
-          for (let attempt = 0; attempt <= retries; attempt++) {
-            try {
-              if (attempt > 0) {
-                console.log(`[DEBUG] Tentative de récupération #${attempt}...`);
-              }
-              
-              // Essayer de récupérer les données depuis le serveur
-              const result = await store.dispatch('fetchTodos');
-              console.log('[DEBUG] Résultat de la récupération des tâches:', result);
-              
-              // Si réussi, sortir de la boucle
-              return result;
-            } catch (error) {
-              lastError = error;
-              console.error(`[DEBUG] Échec de la tentative #${attempt}:`, error);
-              
-              if (attempt < retries) {
-                console.log(`[DEBUG] Nouvelle tentative dans ${delay}ms...`);
-                await new Promise(resolve => setTimeout(resolve, delay));
-              }
-            }
-          }
-          
-          // Si toutes les tentatives ont échoué
-          throw lastError || new Error('Échec des tentatives de récupération');
-        };
+        // Si toutes les tentatives ont échoué
+        throw lastError || new Error('Échec des tentatives de récupération');
+      };
+      
+      try {
+        // Essayer de récupérer les données avec retry
+        const result = await fetchWithRetry();
         
-        try {
-          // Essayer de récupérer les données avec retry
-          const result = await fetchWithRetry();
-          
-          // Vérifier le chargement
-          const todosCount = store.state.todos.length;
-          console.log(`[DEBUG] Nombre de tâches après chargement: ${todosCount}`);
-          
-          // Si aucune tâche n'a été chargée mais qu'il y en a dans localStorage, charger celles-ci
-          if (todosCount === 0 && localTodos && Array.isArray(localTodos) && localTodos.length > 0) {
-            console.log('[DEBUG] Aucune tâche chargée depuis le serveur mais présentes en local, chargement de secours...');
-            store.commit('SET_TODOS', localTodos);
-          }
-          
-          // Force sauvegarder après tout le processus pour s'assurer que les données sont persistées
-          window.setTimeout(forceSaveTodos, 500);
-          
-          // Configurer la synchronisation périodique (toutes les 5 minutes)
-          syncInterval = setInterval(syncTodos, 5 * 60 * 1000);
-          
-          // Ajout d'une sauvegarde périodique toutes les 30 secondes
-          const saveInterval = setInterval(forceSaveTodos, 30 * 1000);
-          
-          // Ajouter un écouteur d'événement pour détecter la reprise après veille
-          document.addEventListener('visibilitychange', handleVisibilityChange);
-          
-          // Ajouter un gestionnaire d'événements pour l'état de connexion
-          window.addEventListener('online', () => {
-            console.log('[DEBUG] Connexion internet rétablie - Synchronisation des tâches');
-            syncTodos();
-          });
-          
-          // Sauvegarder avant fermeture de la page
-          window.addEventListener('beforeunload', () => {
-            console.log('[DEBUG] Page en cours de fermeture - Sauvegarde des tâches');
-            forceSaveTodos();
-          });
-        } catch (error) {
-          console.error('[DEBUG] Erreur lors du chargement initial des tâches:', error);
-          
-          // Vérifier l'état actuel des todos
-          const todosCount = store.state.todos.length;
-          console.log(`[DEBUG] État des todos après erreur: ${todosCount} tâches`);
-          
-          // En cas d'échec complet, utiliser le chargement d'urgence depuis localStorage
-          if (todosCount === 0 && localTodos && Array.isArray(localTodos) && localTodos.length > 0) {
-            console.log('[DEBUG] Chargement de secours après échec complet...');
-            store.commit('SET_TODOS', localTodos);
-          }
-          
-          // Force sauvegarder même en cas d'erreur
-          window.setTimeout(forceSaveTodos, 500);
+        // Vérifier le chargement
+        const todosCount = store.state.todos.length;
+        console.log(`[DEBUG] Nombre de tâches après chargement: ${todosCount}`);
+        
+        // Si aucune tâche n'a été chargée mais qu'il y en a dans localStorage, charger celles-ci
+        if (todosCount === 0 && localTodos && Array.isArray(localTodos) && localTodos.length > 0) {
+          console.log('[DEBUG] Aucune tâche chargée depuis le serveur mais présentes en local, chargement de secours...');
+          store.commit('SET_TODOS', localTodos);
         }
-      } else {
-        console.log('[DEBUG] Utilisateur non authentifié - Redirection vers la page de connexion');
+        
+        // Force sauvegarder après tout le processus pour s'assurer que les données sont persistées
+        window.setTimeout(forceSaveTodos, 500);
+        
+        // Configurer la synchronisation périodique (toutes les 5 minutes)
+        syncInterval = setInterval(syncTodos, 5 * 60 * 1000);
+        
+        // Ajout d'une sauvegarde périodique toutes les 30 secondes
+        const saveInterval = setInterval(forceSaveTodos, 30 * 1000);
+        
+        // Ajouter un écouteur d'événement pour détecter la reprise après veille
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        
+        // Ajouter un gestionnaire d'événements pour l'état de connexion
+        window.addEventListener('online', () => {
+          console.log('[DEBUG] Connexion internet rétablie - Synchronisation des tâches');
+          syncTodos();
+        });
+        
+        // Sauvegarder avant fermeture de la page
+        window.addEventListener('beforeunload', () => {
+          console.log('[DEBUG] Page en cours de fermeture - Sauvegarde des tâches');
+          forceSaveTodos();
+        });
+      } catch (error) {
+        console.error('[DEBUG] Erreur lors du chargement initial des tâches:', error);
+        
+        // Vérifier l'état actuel des todos
+        const todosCount = store.state.todos.length;
+        console.log(`[DEBUG] État des todos après erreur: ${todosCount} tâches`);
+        
+        // En cas d'échec complet, utiliser le chargement d'urgence depuis localStorage
+        if (todosCount === 0 && localTodos && Array.isArray(localTodos) && localTodos.length > 0) {
+          console.log('[DEBUG] Chargement de secours après échec complet...');
+          store.commit('SET_TODOS', localTodos);
+        }
+        
+        // Force sauvegarder même en cas d'erreur
+        window.setTimeout(forceSaveTodos, 500);
       }
     });
     
