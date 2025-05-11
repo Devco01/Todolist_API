@@ -22,6 +22,7 @@
 import { computed, watchEffect, onMounted, onUnmounted } from 'vue';
 import { useStore } from 'vuex';
 import NavBar from './components/NavBar.vue';
+import axios from 'axios';
 
 export default {
   components: {
@@ -102,16 +103,38 @@ export default {
         const token = localStorage.getItem('authToken');
         const user = localStorage.getItem('user');
         
-        if (token && (!user || user === 'null')) {
-          console.log('[DEBUG] Token trouvé mais informations utilisateur manquantes, tentative de récupération');
+        console.log('[DEBUG] Vérification de la session existante -', 
+          'Token:', token ? 'Présent' : 'Absent', 
+          'User:', user ? 'Présent' : 'Absent');
+        
+        // Si nous avons un token, essayer de restaurer la session même si l'utilisateur est présent
+        // (pour être sûr que l'authentification est valide)
+        if (token) {
+          console.log('[DEBUG] Token trouvé, tentative de récupération de la session');
+          
+          // Forcer le token dans les headers avant l'appel
+          axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
           
           // Tentative de récupération des informations utilisateur
           await store.dispatch('checkAuth');
           
-          console.log('[DEBUG] Récupération utilisateur:', store.state.isAuthenticated ? 'Réussi' : 'Échec');
+          console.log('[DEBUG] Récupération session:', 
+            store.state.isAuthenticated ? 'Réussie ✓' : 'Échec ✗',
+            'User ID:', store.state.user?.id || 'Non disponible');
+            
+          // Si la session est récupérée, lancer immédiatement la récupération des tâches
+          if (store.state.isAuthenticated && store.state.user) {
+            console.log('[DEBUG] Session restaurée, chargement des tâches associées');
+            await store.dispatch('fetchTodos');
+          }
+          
+          return store.state.isAuthenticated;
         }
+        
+        return false;
       } catch (error) {
         console.error('[DEBUG] Erreur lors de la tentative de récupération utilisateur:', error);
+        return false;
       }
     };
     
