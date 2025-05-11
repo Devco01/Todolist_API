@@ -29,12 +29,64 @@ const initUserModel = async (force = true) => {
   }
   
   try {
+    // Vérifier d'abord si la table existe déjà
+    console.log('[USERPG] Vérification si la table User existe déjà');
+    try {
+      const [checkResults] = await sequelize.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_name = 'User'
+        );
+      `);
+      const tableExists = checkResults[0]?.exists === true;
+      console.log('[USERPG] Table User existe déjà:', tableExists);
+      
+      if (tableExists && !force) {
+        console.log('[USERPG] Table User existe déjà, pas besoin de la recréer');
+        
+        // Vérifier les colonnes de la table
+        try {
+          const [columns] = await sequelize.query(`
+            SELECT column_name, data_type 
+            FROM information_schema.columns 
+            WHERE table_name = 'User'
+          `);
+          console.log('[USERPG] Colonnes de la table User:', 
+            columns.map(col => `${col.column_name} (${col.data_type})`).join(', '));
+        } catch (colError) {
+          console.error('[USERPG] Erreur lors de la vérification des colonnes:', colError);
+        }
+        
+        // Initialiser le modèle Sequelize sans forcer la synchronisation
+        const model = getUserModel();
+        if (model) {
+          try {
+            await model.sync({ alter: true }); // Mise à jour douce (alter)
+            console.log('[USERPG] Table User synchronisée en douceur');
+            return true;
+          } catch (syncError) {
+            console.error('[USERPG] Erreur lors de la synchronisation douce:', syncError);
+            // Continuer malgré l'erreur
+          }
+        }
+        
+        return true;
+      }
+    } catch (checkError) {
+      console.error('[USERPG] Erreur lors de la vérification de la table:', checkError);
+      // Continuer avec la création
+    }
+    
     // APPROCHE RADICALE : Créer la table directement avec une requête SQL brute
     console.log('[USERPG] Création directe de la table User avec requête SQL brute');
+    
+    // Sur NeonDB, essayer d'abord avec uuid_generate_v4 qui est plus compatible
     try {
+      console.log('[USERPG] Création de la table User avec uuid_generate_v4() (NeonDB)');
       await sequelize.query(`
+        CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
         CREATE TABLE IF NOT EXISTS "User" (
-          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
           username VARCHAR(255) NOT NULL UNIQUE,
           email VARCHAR(255) NOT NULL UNIQUE,
           password VARCHAR(255) NOT NULL,
@@ -43,48 +95,46 @@ const initUserModel = async (force = true) => {
           "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
         );
       `);
-      console.log('[USERPG] Table User créée manuellement avec succès');
-    } catch (sqlError) {
-      console.error('[USERPG] Erreur lors de la création manuelle de la table:', sqlError);
+      console.log('[USERPG] Table User créée avec uuid_generate_v4() pour NeonDB');
+    } catch (uuidOsspError) {
+      console.error('[USERPG] Erreur avec uuid_generate_v4():', uuidOsspError);
       
-      // Si l'erreur est due à gen_random_uuid, utiliser une alternative
-      if (sqlError.message && sqlError.message.includes('gen_random_uuid')) {
+      // Deuxième tentative avec gen_random_uuid
+      try {
+        console.log('[USERPG] Tentative avec gen_random_uuid()');
+        await sequelize.query(`
+          CREATE TABLE IF NOT EXISTS "User" (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            username VARCHAR(255) NOT NULL UNIQUE,
+            email VARCHAR(255) NOT NULL UNIQUE,
+            password VARCHAR(255) NOT NULL,
+            "isAdmin" BOOLEAN DEFAULT false,
+            "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+            "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+          );
+        `);
+        console.log('[USERPG] Table User créée avec gen_random_uuid()');
+      } catch (genUuidError) {
+        console.error('[USERPG] Erreur avec gen_random_uuid():', genUuidError);
+        
+        // Dernière tentative avec une méthode basique
         try {
-          console.log('[USERPG] Retentative avec uuid_generate_v4() au lieu de gen_random_uuid()');
+          console.log('[USERPG] Création avec méthode basique');
           await sequelize.query(`
-            CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
             CREATE TABLE IF NOT EXISTS "User" (
-              id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+              id VARCHAR(36) PRIMARY KEY,
               username VARCHAR(255) NOT NULL UNIQUE,
               email VARCHAR(255) NOT NULL UNIQUE,
               password VARCHAR(255) NOT NULL,
               "isAdmin" BOOLEAN DEFAULT false,
-              "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-              "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+              "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+              "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
             );
           `);
-          console.log('[USERPG] Table User créée manuellement avec succès (méthode alternative)');
-        } catch (altSqlError) {
-          console.error('[USERPG] Échec de la création alternative:', altSqlError);
-          
-          // Dernière tentative avec une méthode encore plus simple
-          try {
-            console.log('[USERPG] Création de table avec méthode basique');
-            await sequelize.query(`
-              CREATE TABLE IF NOT EXISTS "User" (
-                id VARCHAR(36) PRIMARY KEY,
-                username VARCHAR(255) NOT NULL UNIQUE,
-                email VARCHAR(255) NOT NULL UNIQUE,
-                password VARCHAR(255) NOT NULL,
-                "isAdmin" BOOLEAN DEFAULT false,
-                "createdAt" TIMESTAMP NOT NULL,
-                "updatedAt" TIMESTAMP NOT NULL
-              );
-            `);
-            console.log('[USERPG] Table User créée avec méthode basique');
-          } catch (basicError) {
-            console.error('[USERPG] Échec de toutes les méthodes de création de table:', basicError);
-          }
+          console.log('[USERPG] Table User créée avec méthode basique');
+        } catch (basicError) {
+          console.error('[USERPG] Échec de toutes les méthodes de création de table:', basicError);
+          throw basicError; // Remonter l'erreur pour traitement global
         }
       }
     }
@@ -98,12 +148,12 @@ const initUserModel = async (force = true) => {
     
     try {
       // Force synchroniser le modèle
-      console.log(`[USERPG] Force synchronisation du modèle User (force=${force})`);
-      await model.sync({ force });
-      console.log('[USERPG] Table User créée/synchronisée avec succès');
+      console.log(`[USERPG] Synchronisation du modèle User (force=${force})`);
+      await model.sync({ force: false, alter: true }); // Utiliser alter au lieu de force
+      console.log('[USERPG] Table User synchronisée avec succès');
       return true;
     } catch (error) {
-      console.error('[USERPG] Erreur lors de la synchronisation forcée:', error);
+      console.error('[USERPG] Erreur lors de la synchronisation:', error);
       // Renvoyer true quand même car la table a peut-être été créée manuellement
       return true;
     }
