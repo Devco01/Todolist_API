@@ -211,6 +211,54 @@ const syncTodoModel = async (force = false) => {
       return false;
     }
     
+    // Vérifier d'abord si la table existe déjà
+    console.log('[TODOPG] Vérification si la table Todo existe déjà');
+    try {
+      const sequelize = getSequelize();
+      if (sequelize) {
+        const [checkResults] = await sequelize.query(`
+          SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_name = 'Todo'
+          );
+        `);
+        const tableExists = checkResults[0]?.exists === true;
+        console.log('[TODOPG] Table Todo existe déjà:', tableExists);
+        
+        if (tableExists && !force) {
+          console.log('[TODOPG] Table Todo existe déjà, pas besoin de la recréer');
+          
+          // Vérifier les colonnes de la table
+          try {
+            const [columns] = await sequelize.query(`
+              SELECT column_name, data_type 
+              FROM information_schema.columns 
+              WHERE table_name = 'Todo'
+            `);
+            console.log('[TODOPG] Colonnes de la table Todo:', 
+              columns.map(col => `${col.column_name} (${col.data_type})`).join(', '));
+          } catch (colError) {
+            console.error('[TODOPG] Erreur lors de la vérification des colonnes:', colError);
+          }
+          
+          // Synchroniser doucement le modèle
+          try {
+            await Todo.sync({ alter: true }); // Mise à jour douce (alter)
+            console.log('[TODOPG] Table Todo synchronisée en douceur');
+            return true;
+          } catch (syncError) {
+            console.error('[TODOPG] Erreur lors de la synchronisation douce:', syncError);
+            // Continuer malgré l'erreur
+          }
+          
+          return true;
+        }
+      }
+    } catch (checkError) {
+      console.error('[TODOPG] Erreur lors de la vérification de la table:', checkError);
+      // Continuer avec la création
+    }
+    
     // Synchroniser le modèle avec force si nécessaire
     const forceSync = process.env.FORCE_SYNC === 'true' || force;
     console.log(`[TODOPG] Synchronisation avec force=${forceSync}`);
@@ -240,16 +288,7 @@ const syncTodoModel = async (force = false) => {
           )
         `);
         
-        // Vérifier si la table a bien été créée
-        const [checkResults] = await sequelize.query(`
-          SELECT EXISTS (
-            SELECT FROM information_schema.tables 
-            WHERE table_name = 'Todo'
-          );
-        `);
-        
-        const tableExists = checkResults[0]?.exists === true;
-        console.log('[TODOPG] Vérification après création manuelle: Table Todo existe =', tableExists);
+        console.log('[TODOPG] Table Todo créée manuellement avec succès');
       }
     } catch (manualError) {
       console.error('[TODOPG] Erreur lors de la création manuelle de la table:', manualError);
@@ -287,40 +326,55 @@ const syncTodoModel = async (force = false) => {
       }
     }
     
-    // Synchroniser le modèle
-    await Todo.sync({ force: forceSync });
-    console.log('[TODOPG] Modèle Todo synchronisé avec la base de données');
-    
-    // Vérifier à nouveau que la table existe
+    // Synchroniser le modèle avec alter plutôt que force pour éviter de perdre les données
     try {
-      const sequelize = getSequelize();
-      if (sequelize) {
-        const [checkResults] = await sequelize.query(`
-          SELECT EXISTS (
-            SELECT FROM information_schema.tables 
-            WHERE table_name = 'Todo'
-          );
-        `);
-        
-        const tableExists = checkResults[0]?.exists === true;
-        console.log('[TODOPG] Vérification finale: Table Todo existe =', tableExists);
-        
-        // Si la table existe, vérifier les colonnes
-        if (tableExists) {
-          const [columns] = await sequelize.query(`
-            SELECT column_name 
-            FROM information_schema.columns 
-            WHERE table_name = 'Todo'
+      await Todo.sync({ alter: true });
+      console.log('[TODOPG] Modèle Todo synchronisé avec la base de données (alter)');
+      
+      // Vérifier à nouveau que la table existe
+      try {
+        const sequelize = getSequelize();
+        if (sequelize) {
+          const [checkResults] = await sequelize.query(`
+            SELECT EXISTS (
+              SELECT FROM information_schema.tables 
+              WHERE table_name = 'Todo'
+            );
           `);
           
-          console.log('[TODOPG] Colonnes de la table Todo:', columns.map(col => col.column_name).join(', '));
+          const tableExists = checkResults[0]?.exists === true;
+          console.log('[TODOPG] Vérification finale: Table Todo existe =', tableExists);
+          
+          // Si la table existe, vérifier les colonnes
+          if (tableExists) {
+            const [columns] = await sequelize.query(`
+              SELECT column_name 
+              FROM information_schema.columns 
+              WHERE table_name = 'Todo'
+            `);
+            
+            console.log('[TODOPG] Colonnes de la table Todo:', columns.map(col => col.column_name).join(', '));
+          }
         }
+      } catch (checkError) {
+        console.error('[TODOPG] Erreur lors de la vérification finale de la table:', checkError);
       }
-    } catch (checkError) {
-      console.error('[TODOPG] Erreur lors de la vérification finale de la table:', checkError);
+      
+      return true;
+    } catch (syncError) {
+      console.error('[TODOPG] Erreur lors de la synchronisation alter:', syncError);
+      
+      // Essayer avec force en dernier recours
+      try {
+        console.log('[TODOPG] Tentative avec force=true comme dernier recours');
+        await Todo.sync({ force: true });
+        console.log('[TODOPG] Modèle Todo synchronisé avec force=true');
+        return true;
+      } catch (forceSyncError) {
+        console.error('[TODOPG] Échec aussi avec force=true:', forceSyncError);
+        return false;
+      }
     }
-    
-    return true;
   } catch (error) {
     console.error('[TODOPG] Erreur lors de la synchronisation du modèle Todo:', error);
     

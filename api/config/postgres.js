@@ -11,9 +11,10 @@ let sequelize = null;
 // Établir une connexion à PostgreSQL
 const connectPostgres = async () => {
   try {
-    console.log('[PG] Tentative de connexion à PostgreSQL...');
+    console.log('[PG] Tentative de connexion à PostgreSQL via NeonDB...');
     
     // Récupérer les informations de connexion depuis les variables d'environnement
+    // Vercel définit automatiquement POSTGRES_URL et DATABASE_URL
     const pgUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL;
     
     if (!pgUrl) {
@@ -23,28 +24,40 @@ const connectPostgres = async () => {
     
     // Nettoyer et masquer l'URL pour la journalisation (ne pas afficher les identifiants)
     const maskedUrl = pgUrl.replace(/\/\/([^:]+):([^@]+)@/, '//***:***@');
-    console.log('[PG] URL de connexion PostgreSQL:', maskedUrl);
+    console.log('[PG] URL de connexion PostgreSQL (masquée):', maskedUrl);
     
-    // Options de connexion
+    // Options optimisées pour NeonDB
     const options = {
       logging: (msg) => console.log('[PG-SQL]', msg),
+      dialect: 'postgres',
       dialectOptions: {
         ssl: {
-          require: process.env.NODE_ENV === 'production',
-          rejectUnauthorized: false
-        }
+          require: true,
+          rejectUnauthorized: false // Nécessaire pour NeonDB
+        },
+        keepAlive: true // Maintenir la connexion active
+      },
+      pool: {
+        max: 10, // Maximum de connexions dans le pool
+        min: 0, // Minimum de connexions dans le pool
+        idle: 10000, // 10 secondes avant de libérer une connexion inactive
+        acquire: 30000, // Délai d'attente max pour obtenir une connexion
+        evict: 60000 // Intervalle de vérification des connexions inactives
+      },
+      retry: {
+        max: 3 // Nombre de tentatives en cas d'échec
       }
     };
     
     // Créer une nouvelle instance Sequelize si elle n'existe pas déjà
     if (!sequelize) {
       sequelize = new Sequelize(pgUrl, options);
-      console.log('[PG] Instance Sequelize créée');
+      console.log('[PG] Instance Sequelize créée pour NeonDB');
     }
     
     // Vérifier la connexion
     await sequelize.authenticate();
-    console.log('[PG] Connexion à PostgreSQL établie avec succès');
+    console.log('[PG] Connexion à PostgreSQL (NeonDB) établie avec succès');
     
     // Vérifier les tables existantes
     try {
@@ -79,26 +92,11 @@ const connectPostgres = async () => {
       console.error('[PG] Connexion refusée - Vérifiez que le serveur PostgreSQL est bien démarré');
     }
     
-    // Tentative de reconnexion avec des options différentes
-    try {
-      if (process.env.POSTGRES_URL || process.env.DATABASE_URL) {
-        console.log('[PG] Tentative de reconnexion sans SSL...');
-        
-        // Options sans SSL pour test
-        sequelize = new Sequelize(process.env.POSTGRES_URL || process.env.DATABASE_URL, {
-          logging: false,
-          dialectOptions: {
-            ssl: false
-          }
-        });
-        
-        await sequelize.authenticate();
-        console.log('[PG] Reconnexion réussie sans SSL');
-        return true;
-      }
-    } catch (retryError) {
-      console.error('[PG] Échec de la tentative de reconnexion:', retryError.message);
-    }
+    console.log('[PG] Vérifiez les points suivants pour NeonDB:');
+    console.log('1. L\'URL de connexion est correctement formatée');
+    console.log('2. Le projet et la base de données existent sur NeonDB');
+    console.log('3. Les identifiants sont corrects');
+    console.log('4. La connexion depuis l\'environnement actuel est autorisée');
     
     return false;
   }

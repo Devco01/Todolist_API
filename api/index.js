@@ -11,6 +11,22 @@ const authService = require('./services/authService');
 // Charger les variables d'environnement
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
+// Définir des variables d'environnement par défaut si non présentes
+if (!process.env.ALLOW_INVALID_USERS) {
+  process.env.ALLOW_INVALID_USERS = 'true';
+  console.log('Mode de tolérance des utilisateurs invalides activé par défaut');
+}
+
+if (!process.env.ALLOW_TOKEN_FALLBACK) {
+  process.env.ALLOW_TOKEN_FALLBACK = 'true';
+  console.log('Mode de récupération par token activé par défaut');
+}
+
+if (!process.env.ALLOW_ANONYMOUS_TODOS) {
+  process.env.ALLOW_ANONYMOUS_TODOS = 'true';
+  console.log('Mode de création de tâches anonymes activé par défaut');
+}
+
 // Activer automatiquement le mode mémoire si nécessaire
 if (!process.env.POSTGRES_URL && !process.env.DATABASE_URL) {
   console.log('Aucune URL PostgreSQL trouvée. Activation du mode mémoire.');

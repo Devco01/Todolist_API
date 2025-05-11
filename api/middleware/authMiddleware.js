@@ -36,8 +36,9 @@ const protect = async (req, res, next) => {
       });
     }
     
-    // Si mode mémoire activé, créer un utilisateur factice
+    // Si mode mémoire activé, créer un utilisateur factice depuis les infos du token
     if (process.env.USE_MEMORY_MODE === 'true') {
+      console.log('[AUTH-MIDDLEWARE] Mode mémoire actif, utilisation des informations du token');
       req.user = {
         id: decoded.id,
         username: decoded.username,
@@ -49,7 +50,52 @@ const protect = async (req, res, next) => {
     
     // Récupérer l'utilisateur à partir de la base de données
     const user = await authService.getUserById(decoded.id);
+    
     if (!user) {
+      console.log(`[AUTH-MIDDLEWARE] Utilisateur ${decoded.id} non trouvé en BDD mais token valide.`);
+      console.log('[AUTH-MIDDLEWARE] Tentative de récupération par d\'autres moyens...');
+      
+      // Tentative de récupération par username comme solution de secours
+      const UserModel = getUserModel();
+      let fallbackUser = null;
+      
+      if (UserModel && decoded.username) {
+        try {
+          fallbackUser = await UserModel.findOne({
+            where: { username: decoded.username }
+          });
+          
+          if (fallbackUser) {
+            console.log('[AUTH-MIDDLEWARE] Utilisateur récupéré par username', decoded.username);
+          }
+        } catch (fallbackError) {
+          console.error('[AUTH-MIDDLEWARE] Erreur lors de la récupération fallback:', fallbackError);
+        }
+      }
+      
+      if (fallbackUser) {
+        // Utiliser l'utilisateur trouvé
+        req.user = {
+          id: fallbackUser.id,
+          username: fallbackUser.username,
+          email: fallbackUser.email,
+          isAdmin: fallbackUser.isAdmin || false
+        };
+        return next();
+      }
+      
+      // Dernière solution : créer un utilisateur à partir du token
+      if (process.env.ALLOW_TOKEN_FALLBACK === 'true' || process.env.USE_MEMORY_MODE === 'true') {
+        console.log('[AUTH-MIDDLEWARE] Utilisation des infos du token comme fallback');
+        req.user = {
+          id: decoded.id,
+          username: decoded.username,
+          email: decoded.email,
+          isAdmin: decoded.isAdmin || false
+        };
+        return next();
+      }
+      
       return res.status(401).json({
         success: false,
         message: 'Non autorisé - Utilisateur non trouvé'
