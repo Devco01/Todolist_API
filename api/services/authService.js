@@ -10,16 +10,20 @@ const TOKEN_EXPIRATION = '7d'; // 7 jours
 // Initialiser le service d'authentification
 const initAuthService = async () => {
   try {
+    console.log('[AUTH] Initialisation du service d\'authentification...');
+    
     // Connecter à PostgreSQL
-    await connectPostgres();
+    const connection = await connectPostgres();
+    console.log('[AUTH] Résultat de la connexion PostgreSQL:', connection ? 'Succès' : 'Échec');
     
     // Synchroniser le modèle utilisateur
-    await syncUserModel();
+    const syncResult = await syncUserModel();
+    console.log('[AUTH] Résultat de la synchronisation du modèle utilisateur:', syncResult ? 'Succès' : 'Échec');
     
-    console.log('Service d\'authentification initialisé avec succès');
+    console.log('[AUTH] Service d\'authentification initialisé avec succès');
     return true;
   } catch (error) {
-    console.error('Erreur lors de l\'initialisation du service d\'authentification:', error);
+    console.error('[AUTH] Erreur lors de l\'initialisation du service d\'authentification:', error);
     return false;
   }
 };
@@ -27,12 +31,16 @@ const initAuthService = async () => {
 // Enregistrer un nouvel utilisateur
 const registerUser = async (userData) => {
   try {
+    console.log('[AUTH] Tentative d\'enregistrement d\'un nouvel utilisateur:', userData.username);
+    
     const UserModel = getUserModel();
     if (!UserModel) {
+      console.error('[AUTH] Modèle utilisateur non disponible');
       throw new Error('Modèle utilisateur non disponible');
     }
     
     // Vérifier si l'utilisateur existe déjà
+    console.log('[AUTH] Vérification si l\'utilisateur existe déjà...');
     const existingUser = await UserModel.findOne({
       where: {
         [Op.or]: [
@@ -43,16 +51,24 @@ const registerUser = async (userData) => {
     });
     
     if (existingUser) {
+      console.log('[AUTH] Un utilisateur existe déjà avec ce nom ou cet email');
       throw new Error('Un utilisateur avec ce nom d\'utilisateur ou cet email existe déjà');
     }
     
-    // Créer le nouvel utilisateur
-    const newUser = await UserModel.create({
+    // Création d'un objet avec uniquement les champs nécessaires
+    const userToCreate = {
       username: userData.username,
       email: userData.email,
       password: userData.password,
       isAdmin: userData.isAdmin || false
-    });
+    };
+    
+    console.log('[AUTH] Création du nouvel utilisateur avec les données:', 
+      { ...userToCreate, password: '***MASQUÉ***' });
+    
+    // Créer le nouvel utilisateur
+    const newUser = await UserModel.create(userToCreate);
+    console.log('[AUTH] Utilisateur créé avec succès:', newUser.id);
     
     // Générer un token JWT
     const token = generateToken(newUser);
@@ -66,12 +82,19 @@ const registerUser = async (userData) => {
       createdAt: newUser.createdAt
     };
     
+    console.log('[AUTH] Enregistrement réussi pour:', userResponse.username);
+    
     return {
       user: userResponse,
       token
     };
   } catch (error) {
-    console.error('Erreur lors de l\'enregistrement de l\'utilisateur:', error);
+    console.error('[AUTH] Erreur détaillée lors de l\'enregistrement:', error);
+    
+    if (error.name === 'SequelizeValidationError') {
+      console.error('[AUTH] Erreurs de validation:', error.errors.map(e => e.message).join(', '));
+    }
+    
     throw error;
   }
 };
@@ -79,8 +102,11 @@ const registerUser = async (userData) => {
 // Connecter un utilisateur existant
 const loginUser = async (username, password) => {
   try {
+    console.log('[AUTH] Tentative de connexion pour l\'utilisateur:', username);
+    
     const UserModel = getUserModel();
     if (!UserModel) {
+      console.error('[AUTH] Modèle utilisateur non disponible');
       throw new Error('Modèle utilisateur non disponible');
     }
     
@@ -95,12 +121,14 @@ const loginUser = async (username, password) => {
     });
     
     if (!user) {
+      console.log('[AUTH] Utilisateur non trouvé:', username);
       throw new Error('Utilisateur non trouvé');
     }
     
     // Vérifier le mot de passe
     const isPasswordValid = await user.comparePassword(password);
     if (!isPasswordValid) {
+      console.log('[AUTH] Mot de passe incorrect pour:', username);
       throw new Error('Mot de passe incorrect');
     }
     
@@ -116,12 +144,14 @@ const loginUser = async (username, password) => {
       createdAt: user.createdAt
     };
     
+    console.log('[AUTH] Connexion réussie pour:', userResponse.username);
+    
     return {
       user: userResponse,
       token
     };
   } catch (error) {
-    console.error('Erreur lors de la connexion de l\'utilisateur:', error);
+    console.error('[AUTH] Erreur lors de la connexion de l\'utilisateur:', error);
     throw error;
   }
 };
