@@ -22,7 +22,8 @@
 import { computed, watchEffect, onMounted, onUnmounted } from 'vue';
 import { useStore } from 'vuex';
 import NavBar from './components/NavBar.vue';
-import axios from 'axios';
+import axios from './utils/axios';
+import { mapState, mapMutations, mapActions } from 'vuex';
 
 export default {
   components: {
@@ -62,7 +63,7 @@ export default {
         console.log('Synchronisation périodique des tâches...');
         
         // Tenter d'abord une synchronisation d'urgence (push des modifications locales)
-        await emergencySyncTodos();
+        await emergencySync();
         
         // Puis récupérer les tâches du serveur (pull des modifications distantes)
         await store.dispatch('fetchTodos');
@@ -101,39 +102,48 @@ export default {
       }
     };
     
-    // Fonction pour synchroniser d'urgence toutes les tâches avec le serveur
-    const emergencySyncTodos = async () => {
-      try {
-        const todos = store.state.todos;
-        if (!Array.isArray(todos) || todos.length === 0) {
-          console.log('[DEBUG] Pas de tâches à synchroniser en urgence');
-          return;
-        }
-        
-        console.log(`[DEBUG] Synchronisation d'urgence de ${todos.length} tâches...`);
-        
-        // Tentative rapide de sauvegarde via l'API
-        for (const todo of todos) {
-          try {
-            // Si la tâche a un ID (déjà sauvegardée précédemment)
-            if (todo._id || todo.id) {
-              console.log(`[DEBUG] Mise à jour d'urgence de la tâche ${todo._id || todo.id}`);
-              await axios.put(`/todos/${todo._id || todo.id}`, todo);
-            } else {
-              // Si la tâche n'a pas d'ID (nouvelle tâche non sauvegardée)
-              console.log(`[DEBUG] Sauvegarde d'urgence d'une nouvelle tâche`);
-              await axios.post('/todos', todo);
-            }
-          } catch (e) {
-            console.error(`[DEBUG] Erreur lors de la sauvegarde d'urgence:`, e);
-            // Continuer avec les autres tâches même si celle-ci échoue
-          }
-        }
-        
-        console.log('[DEBUG] Synchronisation d\'urgence terminée');
-      } catch (error) {
-        console.error('[DEBUG] Erreur lors de la synchronisation d\'urgence:', error);
+    // Nouvelle fonction de synchronisation d'urgence qui évite l'erreur 405
+    async emergencySync() {
+      if (store.state.emergencySyncInProgress) {
+        console.log('[DEBUG] Synchronisation d\'urgence déjà en cours, ignorée');
+        return;
       }
+      
+      store.commit('SET_EMERGENCY_SYNC_IN_PROGRESS', true);
+      console.log('[DEBUG] Synchronisation d\'urgence de', store.state.todos.length, 'tâches...');
+      
+      // Récupérer les tâches du store
+      const todos = [...store.state.todos];
+      let successCount = 0;
+      let errorCount = 0;
+      
+      for (const todo of todos) {
+        try {
+          const todoId = todo.id || todo._id;
+          console.log('[DEBUG] Mise à jour d\'urgence de la tâche', todoId);
+          
+          // Utiliser POST au lieu de PUT - contourne le problème 405
+          // Ajouter l'ID à l'objet pour que le serveur sache qu'il s'agit d'une mise à jour
+          const todoWithId = { ...todo };
+          if (todoId) {
+            todoWithId.id = todoId;
+            if (!todoWithId._id) todoWithId._id = todoId;
+          }
+          
+          const response = await axios.post('/todos', todoWithId);
+          
+          if (response.data) {
+            console.log('[DEBUG] Synchronisation d\'urgence réussie pour la tâche', todoId);
+            successCount++;
+          }
+        } catch (error) {
+          console.error('[DEBUG] Erreur lors de la sauvegarde d\'urgence:', error);
+          errorCount++;
+        }
+      }
+      
+      console.log(`[DEBUG] Synchronisation d'urgence terminée: ${successCount} réussies, ${errorCount} échouées`);
+      store.commit('SET_EMERGENCY_SYNC_IN_PROGRESS', false);
     };
     
     // Fonction pour récupérer l'utilisateur si les informations sont perdues
@@ -467,7 +477,7 @@ export default {
           
           // Tentative de synchronisation d'urgence
           try {
-            await emergencySyncTodos();
+            await emergencySync();
           } catch (e) {
             console.error('[DEBUG] Échec de la synchronisation d\'urgence:', e);
           }
