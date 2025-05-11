@@ -1,5 +1,6 @@
 const { DataTypes } = require('sequelize');
 const { getSequelize } = require('../config/postgres');
+const { getUserModel } = require('./UserPg');
 
 // Définition du modèle Todo pour PostgreSQL avec Sequelize
 const defineTodoModel = () => {
@@ -69,6 +70,14 @@ const defineTodoModel = () => {
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: false
+    },
+    userId: {
+      type: DataTypes.UUID,
+      allowNull: true, // On permet null pour les anciennes tâches
+      references: {
+        model: 'Users', // Nom de la table
+        key: 'id'
+      }
     }
   }, {
     // Options du modèle
@@ -147,6 +156,13 @@ const defineTodoModel = () => {
            date.getMonth() === today.getMonth() &&
            date.getFullYear() === today.getFullYear();
   };
+  
+  // Établir les associations avec User si le modèle existe
+  const User = getUserModel();
+  if (User) {
+    Todo.belongsTo(User, { foreignKey: 'userId' });
+    User.hasMany(Todo, { foreignKey: 'userId' });
+  }
   
   return Todo;
 };

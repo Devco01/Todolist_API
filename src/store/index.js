@@ -119,7 +119,10 @@ export default createStore({
     loading: false,
     error: null,
     isOfflineMode: false,
-    notificationStatus: null
+    notificationStatus: null,
+    // Nouvelles propriétés pour l'authentification
+    user: JSON.parse(localStorage.getItem('user')) || null,
+    isAuthenticated: !!localStorage.getItem('authToken')
   },
   getters: {
     sortedTodos: (state) => {
@@ -142,7 +145,10 @@ export default createStore({
     },
     todosWithNotifications: (state) => {
       return state.todos.filter(todo => todo.notificationsEnabled && !todo.completed);
-    }
+    },
+    // Getters pour l'authentification
+    currentUser: (state) => state.user,
+    isAuthenticated: (state) => state.isAuthenticated
   },
   mutations: {
     SET_LOADING(state, value) {
@@ -336,6 +342,20 @@ export default createStore({
     },
     SET_NOTIFICATION_STATUS(state, status) {
       state.notificationStatus = status;
+    },
+    // Mutations pour l'authentification
+    SET_USER(state, user) {
+      state.user = user;
+      localStorage.setItem('user', JSON.stringify(user));
+    },
+    SET_AUTHENTICATED(state, value) {
+      state.isAuthenticated = value;
+    },
+    LOGOUT(state) {
+      state.user = null;
+      state.isAuthenticated = false;
+      localStorage.removeItem('user');
+      localStorage.removeItem('authToken');
     }
   },
   actions: {
@@ -700,6 +720,49 @@ export default createStore({
         });
         
         return { success: false, error: errorMessage };
+      }
+    },
+    // Action pour déconnecter l'utilisateur
+    async logout({ commit }) {
+      try {
+        // Appeler l'API de déconnexion
+        await axios.get('/auth/logout');
+      } catch (error) {
+        console.error('Erreur lors de la déconnexion:', error);
+      } finally {
+        // Même en cas d'erreur, on nettoie les données côté client
+        commit('LOGOUT');
+      }
+    },
+    
+    // Action pour vérifier l'authentification au chargement de l'application
+    async checkAuth({ commit, dispatch }) {
+      const token = localStorage.getItem('authToken');
+      
+      if (!token) {
+        commit('LOGOUT');
+        return { success: false };
+      }
+      
+      try {
+        // Configuration du token pour la requête
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        
+        // Récupérer les informations de l'utilisateur
+        const { data } = await axios.get('/auth/me');
+        
+        if (data.success && data.user) {
+          commit('SET_USER', data.user);
+          commit('SET_AUTHENTICATED', true);
+          return { success: true };
+        } else {
+          commit('LOGOUT');
+          return { success: false };
+        }
+      } catch (error) {
+        console.error('Erreur lors de la vérification de l\'authentification:', error);
+        commit('LOGOUT');
+        return { success: false };
       }
     }
   }

@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const todoPgService = require('../services/todoPgService');
+const { protect } = require('../middleware/authMiddleware');
 
 // Initialiser le service au démarrage
 (async () => {
@@ -11,10 +12,11 @@ const todoPgService = require('../services/todoPgService');
   }
 })();
 
-// Récupérer toutes les tâches
-router.get('/', async (req, res) => {
+// Récupérer toutes les tâches (protégé par authentification)
+router.get('/', protect, async (req, res) => {
   try {
-    const todos = await todoPgService.getAllTodos();
+    // Utiliser l'ID de l'utilisateur connecté pour récupérer ses tâches
+    const todos = await todoPgService.getAllTodosByUser(req.user.id);
     res.json(todos);
   } catch (error) {
     console.error('Erreur lors de la récupération des todos:', error);
@@ -25,8 +27,8 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Créer une nouvelle tâche
-router.post('/', async (req, res) => {
+// Créer une nouvelle tâche (protégé par authentification)
+router.post('/', protect, async (req, res) => {
   try {
     // Log des données reçues
     console.log('POST /todos - Données reçues:', JSON.stringify(req.body));
@@ -38,6 +40,9 @@ router.post('/', async (req, res) => {
     
     // Normaliser le format de date si nécessaire
     const todoData = { ...req.body };
+    
+    // Ajouter l'ID de l'utilisateur connecté
+    todoData.userId = req.user.id;
     
     // S'assurer que dueDate est au bon format (YYYY-MM-DD) pour le stockage
     if (todoData.dueDate) {
@@ -81,13 +86,14 @@ router.post('/', async (req, res) => {
   }
 });
 
-// Récupérer une tâche spécifique
-router.get('/:id', async (req, res) => {
+// Récupérer une tâche spécifique (protégé par authentification)
+router.get('/:id', protect, async (req, res) => {
   try {
-    const todo = await todoPgService.getTodoById(req.params.id);
+    // Passer l'ID utilisateur pour vérifier l'accès
+    const todo = await todoPgService.getTodoById(req.params.id, req.user.id);
     
     if (!todo) {
-      return res.status(404).json({ error: 'Tâche non trouvée' });
+      return res.status(404).json({ error: 'Tâche non trouvée ou non autorisée' });
     }
     
     res.json(todo);
@@ -100,16 +106,17 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// Mettre à jour une tâche
-router.put('/:id', async (req, res) => {
+// Mettre à jour une tâche (protégé par authentification)
+router.put('/:id', protect, async (req, res) => {
   try {
-    const updatedTodo = await todoPgService.updateTodo(req.params.id, req.body);
+    // Passer l'ID utilisateur pour vérifier l'accès
+    const updatedTodo = await todoPgService.updateTodo(req.params.id, req.body, req.user.id);
     res.json(updatedTodo);
   } catch (error) {
     console.error(`Erreur lors de la mise à jour de la tâche ${req.params.id}:`, error);
     
-    if (error.message === 'Tâche non trouvée') {
-      return res.status(404).json({ error: 'Tâche non trouvée' });
+    if (error.message.includes('non trouvée') || error.message.includes('non autorisée')) {
+      return res.status(404).json({ error: 'Tâche non trouvée ou non autorisée' });
     }
     
     res.status(500).json({ 
@@ -119,16 +126,17 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// Supprimer une tâche
-router.delete('/:id', async (req, res) => {
+// Supprimer une tâche (protégé par authentification)
+router.delete('/:id', protect, async (req, res) => {
   try {
-    await todoPgService.deleteTodo(req.params.id);
+    // Passer l'ID utilisateur pour vérifier l'accès
+    await todoPgService.deleteTodo(req.params.id, req.user.id);
     res.json({ success: true, message: 'Tâche supprimée avec succès' });
   } catch (error) {
     console.error(`Erreur lors de la suppression de la tâche ${req.params.id}:`, error);
     
-    if (error.message === 'Tâche non trouvée') {
-      return res.status(404).json({ error: 'Tâche non trouvée' });
+    if (error.message.includes('non trouvée') || error.message.includes('non autorisée')) {
+      return res.status(404).json({ error: 'Tâche non trouvée ou non autorisée' });
     }
     
     res.status(500).json({ 

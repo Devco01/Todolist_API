@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const notificationService = require('./services/notificationServicePg');
 const { connectPostgres } = require('./config/postgres');
 const app = express();
@@ -23,6 +24,7 @@ app.use(cors({
 
 // Middleware
 app.use(express.json());
+app.use(cookieParser()); // Pour gérer les cookies d'authentification
 
 // Stocker l'application dans une variable globale
 // Utile pour les fonctions qui ont besoin d'accéder à l'application
@@ -36,6 +38,9 @@ app.use((err, req, res, next) => {
     message: process.env.NODE_ENV === 'development' ? err.message : undefined
   });
 });
+
+// Routes d'authentification
+app.use('/api/auth', require('./routes/authRoutes'));
 
 // Routes principales - redirection vers les routes PostgreSQL
 app.use('/api/todos', require('./routes/todoPgRoutes'));
