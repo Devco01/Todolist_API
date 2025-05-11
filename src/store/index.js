@@ -643,7 +643,7 @@ export default createStore({
         }
         
         return { success: false, error: errorMessage };
-      }
+      },
     },
     async deleteTodo({ commit, state }, id) {
       commit('SET_ERROR', null);
@@ -664,7 +664,7 @@ export default createStore({
         }
         
         return { success: false, error: errorMessage };
-      }
+      },
     },
     async updateNotificationSettings({ commit, dispatch }, { todoId, notificationsEnabled, notificationEmail }) {
       commit('SET_ERROR', null);
@@ -694,7 +694,7 @@ export default createStore({
         });
         
         return { success: false, error: errorMessage };
-      }
+      },
     },
     async testNotification({ commit }, { todoId, testEmail }) {
       commit('SET_ERROR', null);
