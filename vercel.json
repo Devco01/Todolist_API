@@ -34,7 +34,7 @@
   },
   "crons": [
     {
-      "path": "/api/cron/check-notifications",
+      "path": "/api/cron/check-notifications-pg",
       "schedule": "0 8 * * *"
     }
   ]

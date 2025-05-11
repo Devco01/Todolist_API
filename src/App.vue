@@ -18,7 +18,7 @@
 </template>
 
 <script>
-import { computed, watchEffect } from 'vue';
+import { computed, watchEffect, onMounted, onUnmounted } from 'vue';
 import { useStore } from 'vuex';
 
 export default {
@@ -29,6 +29,7 @@ export default {
     
     // Cacher automatiquement la notification après 3 secondes
     let notificationTimeout = null;
+    let syncInterval = null;
     
     const clearNotification = () => {
       if (notificationTimeout) {
@@ -48,6 +49,52 @@ export default {
         clearNotification();
       }
     });
+    
+    // Fonction de synchronisation des tâches
+    const syncTodos = async () => {
+      try {
+        console.log('Synchronisation périodique des tâches...');
+        await store.dispatch('fetchTodos');
+      } catch (error) {
+        console.error('Erreur lors de la synchronisation périodique:', error);
+      }
+    };
+    
+    // Gestionnaire d'événement pour la reprise d'activité après veille
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log('Application de nouveau visible - Synchronisation des tâches');
+        syncTodos();
+      }
+    };
+    
+    // Charger les tâches au démarrage de l'application
+    onMounted(async () => {
+      console.log('Application démarrée - Chargement initial des tâches...');
+      try {
+        await store.dispatch('fetchTodos');
+        console.log('Chargement initial des tâches terminé');
+        
+        // Configurer la synchronisation périodique (toutes les 10 minutes)
+        syncInterval = setInterval(syncTodos, 10 * 60 * 1000);
+        
+        // Ajouter un écouteur d'événement pour détecter la reprise après veille
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+      } catch (error) {
+        console.error('Erreur lors du chargement initial des tâches:', error);
+      }
+    });
+    
+    // Nettoyage des écouteurs d'événements et des intervalles
+    const cleanup = () => {
+      if (syncInterval) {
+        clearInterval(syncInterval);
+      }
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+    
+    // Nettoyer les ressources lors de la destruction du composant
+    onUnmounted(cleanup);
     
     return {
       notificationStatus
