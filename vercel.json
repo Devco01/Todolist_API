@@ -5,7 +5,8 @@
       "src": "api/index.js",
       "use": "@vercel/node",
       "config": {
-        "maxDuration": 60
+        "maxDuration": 60,
+        "includeFiles": ["node_modules/**"]
       }
     },
     {
@@ -37,5 +38,6 @@
       "path": "/api/cron/check-notifications-pg",
       "schedule": "0 8 * * *"
     }
-  ]
+  ],
+  "installCommand": "npm install --production"
 } 
