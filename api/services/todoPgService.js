@@ -32,7 +32,40 @@ const isModelAvailable = () => {
 // Fonctions CRUD
 // --------------
 
-// Récupérer toutes les tâches
+// Récupérer toutes les tâches d'un utilisateur
+const getAllTodosByUser = async (userId) => {
+  try {
+    // Vérifier si la base de données est disponible
+    if (isModelAvailable()) {
+      const TodoModel = getTodoModel();
+      const todos = await TodoModel.findAll({
+        where: {
+          [Op.or]: [
+            { userId }, // Tâches de l'utilisateur
+            { userId: null } // Tâches sans utilisateur spécifique (compatibilité)
+          ]
+        },
+        order: [['createdAt', 'DESC']]
+      });
+      
+      // Mise à jour des todos en mémoire pour cet utilisateur
+      const userTodos = todos.map(todo => todo.toJSON());
+      return userTodos;
+    } else {
+      // Si la base de données n'est pas disponible, filtrer les todos en mémoire pour cet utilisateur
+      return inMemoryTodos.filter(todo => 
+        !todo.userId || todo.userId === userId
+      );
+    }
+  } catch (error) {
+    console.error('Erreur lors de la récupération des todos par utilisateur:', error);
+    return inMemoryTodos.filter(todo => 
+      !todo.userId || todo.userId === userId
+    );
+  }
+};
+
+// Récupérer toutes les tâches (pour la compatibilité ou l'admin)
 const getAllTodos = async () => {
   try {
     // Vérifier si la base de données est disponible
@@ -54,14 +87,28 @@ const getAllTodos = async () => {
   }
 };
 
-// Récupérer une tâche par son ID
-const getTodoById = async (id) => {
+// Récupérer une tâche par son ID avec vérification utilisateur
+const getTodoById = async (id, userId = null) => {
   try {
     if (isModelAvailable()) {
       const TodoModel = getTodoModel();
-      return await TodoModel.findByPk(id);
+      const todo = await TodoModel.findByPk(id);
+      
+      // Vérifier si la tâche appartient à l'utilisateur demandé
+      if (userId && todo && todo.userId && todo.userId !== userId) {
+        return null; // L'utilisateur n'a pas accès à cette tâche
+      }
+      
+      return todo;
     } else {
-      return inMemoryTodos.find(todo => todo.id === id);
+      const todo = inMemoryTodos.find(todo => todo.id === id);
+      
+      // Vérifier si la tâche appartient à l'utilisateur demandé
+      if (userId && todo && todo.userId && todo.userId !== userId) {
+        return null; // L'utilisateur n'a pas accès à cette tâche
+      }
+      
+      return todo;
     }
   } catch (error) {
     console.error(`Erreur lors de la récupération du todo ${id}:`, error);
@@ -99,15 +146,26 @@ const createTodo = async (todoData) => {
   }
 };
 
-// Mettre à jour une tâche existante
-const updateTodo = async (id, updateData) => {
+// Mettre à jour une tâche existante avec vérification utilisateur
+const updateTodo = async (id, updateData, userId = null) => {
   try {
     if (isModelAvailable()) {
       const TodoModel = getTodoModel();
-      const todo = await TodoModel.findByPk(id);
+      
+      // Construire la clause where
+      const whereClause = { id };
+      if (userId) {
+        whereClause[Op.or] = [
+          { userId },
+          { userId: null }
+        ];
+      }
+      
+      // Trouver la tâche avec la condition d'utilisateur si spécifiée
+      const todo = await TodoModel.findOne({ where: whereClause });
       
       if (!todo) {
-        throw new Error('Tâche non trouvée');
+        throw new Error('Tâche non trouvée ou non autorisée');
       }
       
       // Mettre à jour les champs
@@ -122,10 +180,15 @@ const updateTodo = async (id, updateData) => {
       return todo;
     } else {
       // Mettre à jour en mémoire
-      const index = inMemoryTodos.findIndex(t => t.id === id);
+      const index = inMemoryTodos.findIndex(t => {
+        // Vérifier l'ID et l'utilisateur si nécessaire
+        if (t.id !== id) return false;
+        if (userId && t.userId && t.userId !== userId) return false;
+        return true;
+      });
       
       if (index === -1) {
-        throw new Error('Tâche non trouvée');
+        throw new Error('Tâche non trouvée ou non autorisée');
       }
       
       inMemoryTodos[index] = {
@@ -142,15 +205,26 @@ const updateTodo = async (id, updateData) => {
   }
 };
 
-// Supprimer une tâche
-const deleteTodo = async (id) => {
+// Supprimer une tâche avec vérification utilisateur
+const deleteTodo = async (id, userId = null) => {
   try {
     if (isModelAvailable()) {
       const TodoModel = getTodoModel();
-      const todo = await TodoModel.findByPk(id);
+      
+      // Construire la clause where
+      const whereClause = { id };
+      if (userId) {
+        whereClause[Op.or] = [
+          { userId },
+          { userId: null }
+        ];
+      }
+      
+      // Trouver la tâche avec la condition d'utilisateur si spécifiée
+      const todo = await TodoModel.findOne({ where: whereClause });
       
       if (!todo) {
-        throw new Error('Tâche non trouvée');
+        throw new Error('Tâche non trouvée ou non autorisée');
       }
       
       await todo.destroy();
@@ -160,13 +234,19 @@ const deleteTodo = async (id) => {
       
       return { success: true };
     } else {
-      // Supprimer de la mémoire
-      const initialLength = inMemoryTodos.length;
-      inMemoryTodos = inMemoryTodos.filter(t => t.id !== id);
+      // Vérifier si la tâche existe et appartient à l'utilisateur
+      const todoToDelete = inMemoryTodos.find(t => {
+        if (t.id !== id) return false;
+        if (userId && t.userId && t.userId !== userId) return false;
+        return true;
+      });
       
-      if (inMemoryTodos.length === initialLength) {
-        throw new Error('Tâche non trouvée');
+      if (!todoToDelete) {
+        throw new Error('Tâche non trouvée ou non autorisée');
       }
+      
+      // Supprimer de la mémoire
+      inMemoryTodos = inMemoryTodos.filter(t => t.id !== id);
       
       return { success: true };
     }
@@ -219,11 +299,11 @@ const markNotificationSent = async (todoId) => {
 module.exports = {
   init,
   getAllTodos,
+  getAllTodosByUser,
   getTodoById,
   createTodo,
   updateTodo,
   deleteTodo,
   getTodosWithPendingNotifications,
-  markNotificationSent,
-  isModelAvailable
+  markNotificationSent
 }; 

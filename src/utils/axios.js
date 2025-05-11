@@ -16,6 +16,12 @@ const instance = axios.create({
 // Intercepteur pour les requêtes
 instance.interceptors.request.use(
   config => {
+    // Ajouter le token JWT s'il existe
+    const token = localStorage.getItem('authToken');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    
     console.log(`Requête ${config.method.toUpperCase()} vers ${config.url}`);
     return config;
   },
@@ -49,6 +55,19 @@ instance.interceptors.response.use(
     return response;
   },
   error => {
+    // Gérer les erreurs d'authentification (401)
+    if (error.response && error.response.status === 401) {
+      console.warn('Session expirée ou non authentifiée');
+      // Nettoyer les données d'authentification
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('user');
+      
+      // Rediriger vers la page de connexion si nécessaire
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
+    }
+    
     // Si l'erreur est due à un problème de connexion au serveur
     if (!error.response) {
       console.warn('Erreur de connexion au serveur API. Utilisation du stockage local.');
