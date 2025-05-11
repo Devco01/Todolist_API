@@ -1,15 +1,48 @@
 import { createStore } from 'vuex'
 import axios from '../utils/axios'
 
-// Fonction pour charger les todos du localStorage
+// Fonction pour charger les todos du localStorage avec gestion d'erreur améliorée
 const loadTodosFromStorage = () => {
-  const savedTodos = localStorage.getItem('todos')
-  return savedTodos ? JSON.parse(savedTodos) : []
+  try {
+    const savedTodos = localStorage.getItem('todos')
+    console.log('Chargement des todos depuis localStorage:', savedTodos ? 'Données trouvées' : 'Aucune donnée')
+    
+    // Si pas de données, renvoyer un tableau vide
+    if (!savedTodos) return []
+    
+    // Parser les données JSON
+    const parsedTodos = JSON.parse(savedTodos)
+    
+    // Vérifier que c'est bien un tableau
+    if (Array.isArray(parsedTodos)) {
+      return parsedTodos
+    } else {
+      console.error('Format de données invalide dans localStorage:', parsedTodos)
+      return []
+    }
+  } catch (error) {
+    console.error('Erreur lors du chargement des todos depuis localStorage:', error)
+    return []
+  }
 }
 
-// Fonction pour sauvegarder les todos dans le localStorage
+// Fonction pour sauvegarder les todos dans le localStorage avec gestion d'erreur
 const saveTodosToStorage = (todos) => {
-  localStorage.setItem('todos', JSON.stringify(todos))
+  try {
+    // Vérifier que todos est bien un tableau
+    if (!Array.isArray(todos)) {
+      console.error('Tentative de sauvegarde de données non valides dans localStorage:', todos)
+      return false
+    }
+    
+    // Sauvegarder les données et vérifier le résultat
+    localStorage.setItem('todos', JSON.stringify(todos))
+    console.log(`${todos.length} todos sauvegardés dans localStorage`)
+    return true
+  } catch (error) {
+    console.error('Erreur lors de la sauvegarde des todos dans localStorage:', error)
+    return false
+  }
 }
 
 export default createStore({
@@ -96,18 +129,43 @@ export default createStore({
       commit('SET_LOADING', true);
       commit('SET_ERROR', null);
       try {
+        console.log('Tentative de récupération des todos depuis le serveur...');
         const { data } = await axios.get('/todos');
+        
+        // Vérifier la validité des données reçues
+        if (!data || !Array.isArray(data)) {
+          throw new Error('Format de données invalide reçu du serveur');
+        }
+        
+        console.log(`${data.length} todos récupérés depuis le serveur`);
         commit('SET_TODOS', data);
         commit('SET_OFFLINE_MODE', false);
+        
+        // Afficher un message de confirmation temporaire
+        commit('SET_NOTIFICATION_STATUS', {
+          success: true,
+          message: 'Synchronisation réussie avec le serveur'
+        });
+        
         return { success: true, data };
       } catch (error) {
+        console.error('Erreur lors de la récupération des todos:', error);
+        
         const errorMessage = error.response?.data?.error || 'Erreur lors du chargement des tâches';
         commit('SET_ERROR', errorMessage);
         
         // Si pas de réponse du serveur, utiliser le stockage local
         if (!error.response) {
+          console.log('Pas de réponse du serveur, utilisation du stockage local');
           commit('SET_OFFLINE_MODE', true);
           const localTodos = loadTodosFromStorage();
+          
+          // Notification d'utilisation de données locales
+          commit('SET_NOTIFICATION_STATUS', {
+            success: true,
+            message: 'Utilisation des données locales (mode hors ligne)'
+          });
+          
           commit('SET_TODOS', localTodos);
           return { success: true, data: localTodos, offline: true };
         }

@@ -102,6 +102,7 @@ const defineTodoModel = () => {
         
         // Vérifier si la date est valide
         if (isNaN(dueDateTime.getTime())) {
+          console.error('Date d\'échéance invalide pour la tâche:', this.title, dateStr);
           return false;
         }
       } catch (e) {
@@ -113,6 +114,13 @@ const defineTodoModel = () => {
       
       // Déterminer si la tâche est prévue pour aujourd'hui
       const isToday = this.isDateToday(dueDateTime);
+      
+      // Journaliser les décisions de notification pour le débogage
+      console.log(`Évaluation de notification pour "${this.title}": 
+        - Date d'échéance: ${dueDateTime.toISOString()}
+        - Est aujourd'hui: ${isToday}
+        - Notification déjà envoyée: ${this.notificationSent || false}
+      `);
       
       // Ne pas notifier les tâches passées
       if (dueDateTime < now) {
@@ -127,7 +135,7 @@ const defineTodoModel = () => {
       // Notification uniquement pour les tâches d'aujourd'hui
       return isToday;
     } catch (error) {
-      console.error('Erreur lors de la vérification de notification:', error);
+      console.error('Erreur lors de la vérification de notification pour la tâche:', this.title, error);
       return false;
     }
   };
