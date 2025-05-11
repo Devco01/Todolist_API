@@ -17,16 +17,6 @@ Application de gestion de tâches avec design inspiré de Mushishi, combinant fo
 
 L'application dispose d'un système de notification automatique.
 
-Pour activer les notifications sur une tâche:
-1. Cliquez sur l'icône de notification 🔔 d'une tâche
-2. Activez les notifications et entrez votre adresse email
-3. Sauvegardez les paramètres
-
-Une heure avant l'échéance de la tâche, le système enverra automatiquement une notification à l'adresse email indiquée.
-
-Pour tester les notifications, cliquez sur le bouton "✉️ Tester Notifications" en haut de la page.
-
-
 ## Stack technique
 
 - **Frontend**: Vue.js 3, Vuex, CSS moderne

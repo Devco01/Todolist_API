@@ -193,6 +193,33 @@ const getTodoById = async (id, userId = null) => {
 // Créer une nouvelle tâche
 const createTodo = async (todoData) => {
   try {
+    // Vérifier si l'ID utilisateur est présent et valide
+    if (todoData.userId) {
+      // Vérifier le format d'UUID
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(todoData.userId)) {
+        console.error(`[TODOPG] Format d'ID utilisateur invalide: ${todoData.userId}`);
+        throw new Error(`ID utilisateur invalide: format d'UUID incorrect`);
+      }
+      
+      // Si le modèle User est disponible, tenter de vérifier si l'utilisateur existe
+      const { getUserModel } = require('../models/UserPg');
+      const UserModel = getUserModel();
+      
+      if (UserModel) {
+        try {
+          const user = await UserModel.findByPk(todoData.userId);
+          if (!user) {
+            console.error(`[TODOPG] Utilisateur introuvable avec ID: ${todoData.userId}`);
+            throw new Error(`L'utilisateur avec l'ID ${todoData.userId} n'existe pas`);
+          }
+        } catch (userError) {
+          console.error(`[TODOPG] Erreur lors de la vérification de l'utilisateur:`, userError);
+          // Ne pas bloquer la création en cas d'erreur de vérification
+        }
+      }
+    }
+    
     if (isModelAvailable()) {
       const TodoModel = getTodoModel();
       const newTodo = await TodoModel.create(todoData);
@@ -215,6 +242,8 @@ const createTodo = async (todoData) => {
     console.error('Erreur lors de la création du todo:', error);
     if (error.name === 'SequelizeValidationError') {
       throw new Error(`Erreur de validation: ${error.errors.map(e => e.message).join(', ')}`);
+    } else if (error.name === 'SequelizeForeignKeyConstraintError') {
+      throw new Error(`Violation de contrainte de clé étrangère: l'utilisateur spécifié n'existe pas`);
     }
     throw error;
   }
