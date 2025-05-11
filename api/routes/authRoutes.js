@@ -1,17 +1,46 @@
 const express = require('express');
 const router = express.Router();
 const authService = require('../services/authService');
+const { getUserModel, initUserModel } = require('../models/UserPg');
 const { protect } = require('../middleware/authMiddleware');
 
 // Initialiser le service d'authentification
 authService.initAuthService();
+
+// Middleware qui vérifie que le modèle User est prêt
+const ensureUserModelReady = async (req, res, next) => {
+  try {
+    const UserModel = getUserModel();
+    if (!UserModel) {
+      console.error('[AUTH-ROUTE] Modèle User non disponible, tentative d\'initialisation...');
+      
+      // Tenter d'initialiser le modèle en urgence
+      const initSuccess = await initUserModel(true);
+      if (!initSuccess) {
+        return res.status(500).json({
+          success: false,
+          message: 'Service d\'authentification temporairement indisponible, veuillez réessayer'
+        });
+      }
+    }
+    
+    // Si nous arrivons ici, le modèle est disponible
+    next();
+  } catch (error) {
+    console.error('[AUTH-ROUTE] Erreur lors de la vérification du modèle User:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Erreur interne du service d\'authentification'
+    });
+  }
+};
 
 /**
  * @route   POST /api/auth/register
  * @desc    Enregistrer un nouvel utilisateur
  * @access  Public
  */
-router.post('/register', async (req, res) => {
+router.post('/register', ensureUserModelReady, async (req, res) => {
   try {
     console.log('[AUTH-ROUTE] Requête d\'inscription reçue');
     const { username, email, password } = req.body;
@@ -99,7 +128,7 @@ router.post('/register', async (req, res) => {
  * @desc    Connecter un utilisateur
  * @access  Public
  */
-router.post('/login', async (req, res) => {
+router.post('/login', ensureUserModelReady, async (req, res) => {
   try {
     console.log('[AUTH-ROUTE] Requête de connexion reçue');
     const { username, password } = req.body;

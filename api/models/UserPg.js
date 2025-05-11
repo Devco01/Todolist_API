@@ -9,6 +9,36 @@ let UserModel = null;
 let inMemoryUsers = [];
 let isUsingMemoryMode = false;
 
+// Force créer le modèle et la table immédiatement
+const initUserModel = async (force = true) => {
+  console.log('[USERPG] Initialisation forcée du modèle User');
+  
+  // Obtenir l'instance Sequelize
+  const sequelize = getSequelize();
+  if (!sequelize) {
+    console.log('[USERPG] Base de données non disponible, initialisation impossible');
+    return false;
+  }
+  
+  // Récupérer le modèle
+  const model = getUserModel();
+  if (!model) {
+    console.log('[USERPG] Échec de création du modèle User');
+    return false;
+  }
+  
+  try {
+    // Force synchroniser le modèle
+    console.log(`[USERPG] Force synchronisation du modèle User (force=${force})`);
+    await model.sync({ force });
+    console.log('[USERPG] Table User créée/synchronisée avec succès');
+    return true;
+  } catch (error) {
+    console.error('[USERPG] Erreur lors de la synchronisation forcée:', error);
+    return false;
+  }
+};
+
 // Fonction pour obtenir le modèle
 const getUserModel = () => {
   if (UserModel) return UserModel;
@@ -153,8 +183,10 @@ const getUserModel = () => {
       defaultValue: false
     }
   }, {
-    // Spécifier le nom exact de la table au singulier (bug corrigé)
+    // Assurer la cohérence du nom de la table
     tableName: 'User',
+    // Désactiver l'ajout de 's' à la fin du nom de table
+    freezeTableName: true,
     // Hooks pour hacher le mot de passe avant la création/mise à jour
     hooks: {
       beforeCreate: async (user) => {
@@ -216,6 +248,7 @@ const syncUserModel = async (force = false) => {
 module.exports = {
   getUserModel,
   syncUserModel,
+  initUserModel,
   // Pour les tests
   _getInMemoryUsers: () => isUsingMemoryMode ? [...inMemoryUsers] : null
 }; 

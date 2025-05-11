@@ -3,15 +3,26 @@ const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const notificationService = require('./services/notificationServicePg');
 const { connectPostgres } = require('./config/postgres');
+const { initUserModel } = require('./models/UserPg');
+const { syncTodoModel } = require('./models/TodoPg');
 const app = express();
 
-// Connexion à PostgreSQL
+// Connexion à PostgreSQL et initialisation des modèles
 (async () => {
   try {
     await connectPostgres();
     console.log('PostgreSQL connecté au démarrage');
+    
+    // Force initialiser le modèle User (important: fait avant toute route)
+    console.log('Initialisation forcée du modèle User dans server.js...');
+    const forceSync = process.env.NODE_ENV === 'production' || process.env.FORCE_SYNC === 'true';
+    await initUserModel(forceSync);
+    
+    // Synchroniser le modèle Todo après User
+    await syncTodoModel(forceSync);
+    console.log('Modèles synchronisés avec succès dans server.js');
   } catch (err) {
-    console.error('Échec de la connexion à PostgreSQL:', err);
+    console.error('Échec de la connexion/initialisation:', err);
   }
 })();
 

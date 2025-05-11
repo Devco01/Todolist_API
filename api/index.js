@@ -3,6 +3,7 @@ const dotenv = require('dotenv');
 const path = require('path');
 const authService = require('./services/authService');
 const { syncTodoModel } = require('./models/TodoPg');
+const { initUserModel } = require('./models/UserPg');
 
 // Charger les variables d'environnement
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
@@ -13,9 +14,13 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') });
     console.log('Démarrage de l\'initialisation des services et modèles...');
     
     // Forcer la synchronisation en production pour corriger le problème de tables
-    const forceSync = process.env.NODE_ENV === 'production'; 
+    const forceSync = process.env.NODE_ENV === 'production' || process.env.FORCE_SYNC === 'true'; 
     
-    // Initialiser le service d'authentification (qui crée le modèle User)
+    // Force initialiser le modèle User et créer la table
+    console.log('Initialisation forcée du modèle User...');
+    await initUserModel(forceSync);
+    
+    // Initialiser le service d'authentification (qui utilise le modèle User)
     await authService.initAuthService();
     console.log('Service d\'authentification initialisé avec succès');
     
