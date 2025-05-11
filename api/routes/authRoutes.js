@@ -124,6 +124,155 @@ router.post('/register', ensureUserModelReady, async (req, res) => {
 });
 
 /**
+ * @route   GET /api/auth/diagnostic
+ * @desc    Diagnostic et réparation de la table User
+ * @access  Public
+ */
+router.get('/diagnostic', async (req, res) => {
+  try {
+    console.log('[AUTH-DIAG] Démarrage du diagnostic d\'authentification');
+    
+    const sequelize = require('../config/postgres').getSequelize();
+    if (!sequelize) {
+      return res.status(500).json({
+        success: false,
+        message: 'Pas de connexion PostgreSQL disponible',
+        canRepair: false
+      });
+    }
+    
+    // Vérifier si la table User existe
+    let tableExists = false;
+    try {
+      const [results] = await sequelize.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_name = 'User'
+        );
+      `);
+      tableExists = results[0]?.exists === true;
+      console.log('[AUTH-DIAG] La table User existe:', tableExists);
+    } catch (checkError) {
+      console.error('[AUTH-DIAG] Erreur lors de la vérification de la table:', checkError);
+    }
+    
+    // Si la table n'existe pas, essayer de la créer
+    if (!tableExists) {
+      console.log('[AUTH-DIAG] Tentative de création manuelle de la table User');
+      try {
+        await sequelize.query(`
+          CREATE TABLE IF NOT EXISTS "User" (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            username VARCHAR(255) NOT NULL UNIQUE,
+            email VARCHAR(255) NOT NULL UNIQUE,
+            password VARCHAR(255) NOT NULL,
+            "isAdmin" BOOLEAN DEFAULT false,
+            "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+            "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+          );
+        `);
+        console.log('[AUTH-DIAG] Table User créée avec succès');
+      } catch (createError) {
+        console.error('[AUTH-DIAG] Erreur lors de la création de la table:', createError);
+        
+        // Essayer avec une méthode alternative
+        try {
+          console.log('[AUTH-DIAG] Tentative avec méthode alternative');
+          await sequelize.query(`
+            CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+            CREATE TABLE IF NOT EXISTS "User" (
+              id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+              username VARCHAR(255) NOT NULL UNIQUE,
+              email VARCHAR(255) NOT NULL UNIQUE,
+              password VARCHAR(255) NOT NULL,
+              "isAdmin" BOOLEAN DEFAULT false,
+              "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+              "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+            );
+          `);
+          console.log('[AUTH-DIAG] Table User créée avec méthode alternative');
+        } catch (altError) {
+          console.error('[AUTH-DIAG] Échec de la méthode alternative:', altError);
+          
+          // Dernière tentative avec type VARCHAR pour l'ID
+          try {
+            console.log('[AUTH-DIAG] Tentative avec méthode basique');
+            await sequelize.query(`
+              CREATE TABLE IF NOT EXISTS "User" (
+                id VARCHAR(36) PRIMARY KEY,
+                username VARCHAR(255) NOT NULL UNIQUE,
+                email VARCHAR(255) NOT NULL UNIQUE,
+                password VARCHAR(255) NOT NULL,
+                "isAdmin" BOOLEAN DEFAULT false,
+                "createdAt" TIMESTAMP NOT NULL,
+                "updatedAt" TIMESTAMP NOT NULL
+              );
+            `);
+            console.log('[AUTH-DIAG] Table User créée avec méthode basique');
+          } catch (basicError) {
+            console.error('[AUTH-DIAG] Échec de toutes les méthodes:', basicError);
+            return res.status(500).json({
+              success: false,
+              message: 'Impossible de créer la table User',
+              error: basicError.message,
+              canRepair: false
+            });
+          }
+        }
+      }
+      
+      // Vérifier à nouveau si la table existe
+      try {
+        const [results] = await sequelize.query(`
+          SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_name = 'User'
+          );
+        `);
+        tableExists = results[0]?.exists === true;
+        console.log('[AUTH-DIAG] Après réparation, la table User existe:', tableExists);
+      } catch (recheckError) {
+        console.error('[AUTH-DIAG] Erreur lors de la vérification après réparation:', recheckError);
+      }
+    }
+    
+    // Force initialiser le modèle User
+    console.log('[AUTH-DIAG] Initialisation forcée du modèle User');
+    await require('../models/UserPg').initUserModel(true);
+    
+    return res.status(200).json({
+      success: true,
+      message: tableExists ? 'Table User existe' : 'Table User créée avec succès',
+      tableExists,
+      tables: await listTables(sequelize)
+    });
+  } catch (error) {
+    console.error('[AUTH-DIAG] Erreur lors du diagnostic:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Erreur lors du diagnostic',
+      error: error.message
+    });
+  }
+});
+
+// Fonction utilitaire pour lister les tables
+async function listTables(sequelize) {
+  try {
+    const [results] = await sequelize.query(`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public'
+      ORDER BY table_name;
+    `);
+    return results.map(r => r.table_name);
+  } catch (error) {
+    console.error('[AUTH-DIAG] Erreur lors de la récupération des tables:', error);
+    return [];
+  }
+}
+
+/**
  * @route   POST /api/auth/login
  * @desc    Connecter un utilisateur
  * @access  Public
