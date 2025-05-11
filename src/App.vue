@@ -94,6 +94,27 @@ export default {
     onMounted(async () => {
       console.log('[DEBUG] Application démarrée - Chargement initial des tâches...');
       
+      // *** CORRECTIF CRITIQUE: CHARGEMENT IMMÉDIAT DEPUIS LOCALSTORAGE ***
+      try {
+        const rawData = localStorage.getItem('todos');
+        if (rawData && rawData.length > 2) {
+          console.log(`[DEBUG] Données trouvées dans localStorage au démarrage (${rawData.length} caractères)`);
+          
+          try {
+            const parsedTodos = JSON.parse(rawData);
+            if (Array.isArray(parsedTodos) && parsedTodos.length > 0) {
+              console.log(`[DEBUG] CHARGEMENT CRITIQUE: ${parsedTodos.length} tâches trouvées dans localStorage`);
+              // Charger immédiatement les tâches du localStorage pour affichage instantané
+              store.commit('SET_TODOS', parsedTodos);
+            }
+          } catch (parseError) {
+            console.error('[DEBUG] Erreur de parsing du localStorage:', parseError);
+          }
+        }
+      } catch (localStorageError) {
+        console.error('[DEBUG] Erreur d\'accès au localStorage:', localStorageError);
+      }
+      
       // *** VÉRIFICATION SPÉCIALE DE LA SANTÉ DU LOCALSTORAGE ***
       let localStorageWorking = true;
       try {
@@ -133,11 +154,41 @@ export default {
         }
       }
       
+      // *** CORRECTIF CRITIQUE: MULTI-TENTATIVE DE RÉCUPÉRATION SERVEUR ***
+      // Fonction pour tenter de récupérer les données du serveur avec plusieurs essais
+      const fetchWithRetry = async (retries = 2, delay = 1000) => {
+        let lastError = null;
+        
+        for (let attempt = 0; attempt <= retries; attempt++) {
+          try {
+            if (attempt > 0) {
+              console.log(`[DEBUG] Tentative de récupération #${attempt}...`);
+            }
+            
+            // Essayer de récupérer les données depuis le serveur
+            const result = await store.dispatch('fetchTodos');
+            console.log('[DEBUG] Résultat de la récupération des tâches:', result);
+            
+            // Si réussi, sortir de la boucle
+            return result;
+          } catch (error) {
+            lastError = error;
+            console.error(`[DEBUG] Échec de la tentative #${attempt}:`, error);
+            
+            if (attempt < retries) {
+              console.log(`[DEBUG] Nouvelle tentative dans ${delay}ms...`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+            }
+          }
+        }
+        
+        // Si toutes les tentatives ont échoué
+        throw lastError || new Error('Échec des tentatives de récupération');
+      };
+      
       try {
-        // Essayer de récupérer les données depuis le serveur
-        console.log('[DEBUG] Tentative de récupération des tâches depuis le serveur...');
-        const result = await store.dispatch('fetchTodos');
-        console.log('[DEBUG] Résultat de la récupération des tâches:', result);
+        // Essayer de récupérer les données avec retry
+        const result = await fetchWithRetry();
         
         // Vérifier le chargement
         const todosCount = store.state.todos.length;
@@ -146,7 +197,7 @@ export default {
         // Si aucune tâche n'a été chargée mais qu'il y en a dans localStorage, charger celles-ci
         if (todosCount === 0 && localTodos && Array.isArray(localTodos) && localTodos.length > 0) {
           console.log('[DEBUG] Aucune tâche chargée depuis le serveur mais présentes en local, chargement de secours...');
-          await store.dispatch('loadFromLocalStorageOnly');
+          store.commit('SET_TODOS', localTodos);
         }
         
         // Force sauvegarder après tout le processus pour s'assurer que les données sont persistées

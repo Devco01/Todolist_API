@@ -220,7 +220,7 @@ export default createStore({
       }, 100);
     },
     UPDATE_TODO(state, todo) {
-      console.log('[DEBUG] UPDATE_TODO:', todo);
+      console.log('[DEBUG] UPDATE_TODO - Début:', todo);
       
       if (!todo) {
         console.error('[DEBUG] UPDATE_TODO: Tentative de mise à jour d\'une tâche nulle ou undefined');
@@ -234,6 +234,9 @@ export default createStore({
         return;
       }
       
+      // CORRECTIF CRITIQUE: Créer une copie des tâches avant manipulation
+      const todosCopy = [...state.todos];
+      
       // Compatibilité avec MongoDB (_id) et PostgreSQL (id)
       const todoId = todo._id || todo.id;
       if (!todoId) {
@@ -242,22 +245,49 @@ export default createStore({
       }
       
       // Trouver l'index de la tâche à mettre à jour
-      const index = state.todos.findIndex(t => 
+      const index = todosCopy.findIndex(t => 
         (t._id && t._id === todoId) || (t.id && t.id === todoId)
       );
       
+      console.log(`[DEBUG] UPDATE_TODO: Recherche de la tâche avec ID ${todoId}, trouvée à l'index ${index}`);
+      
       if (index !== -1) {
-        state.todos.splice(index, 1, todo);
-        console.log(`[DEBUG] UPDATE_TODO: Tâche mise à jour à l'index ${index}`);
+        // CORRECTIF: S'assurer que l'id et _id sont cohérents
+        if (todo.id && !todo._id) todo._id = todo.id;
+        if (todo._id && !todo.id) todo.id = todo._id;
+        
+        // IMPORTANT: Ne pas utiliser splice qui peut muter l'état de façon incorrecte
+        // Créer un nouveau tableau avec la tâche mise à jour
+        const updatedTodos = [
+          ...todosCopy.slice(0, index),
+          todo,
+          ...todosCopy.slice(index + 1)
+        ];
+        
+        // Mettre à jour l'état avec le nouveau tableau
+        state.todos = updatedTodos;
+        
+        console.log(`[DEBUG] UPDATE_TODO: Tâche mise à jour à l'index ${index}, nouveau total: ${state.todos.length}`);
       } else {
-        console.error(`[DEBUG] UPDATE_TODO: Tâche avec ID ${todoId} non trouvée`);
+        console.error(`[DEBUG] UPDATE_TODO: Tâche avec ID ${todoId} non trouvée dans la liste de ${state.todos.length} tâches`);
+        // Afficher les IDs des tâches existantes pour débogage
+        const existingIds = state.todos.map(t => `${t.id || 'no-id'}/${t._id || 'no-_id'}`).join(', ');
+        console.log(`[DEBUG] UPDATE_TODO: IDs existants: ${existingIds}`);
+        
+        // CORRECTIF CRITIQUE: Si la tâche n'est pas trouvée, l'ajouter plutôt que de la perdre
+        console.log('[DEBUG] UPDATE_TODO: Ajout de la tâche non trouvée comme solution de secours');
+        state.todos.unshift(todo);
       }
       
-      // Sauvegarder dans le localStorage et vérifier le résultat
-      const saveSuccess = saveTodosToStorage(state.todos);
-      if (!saveSuccess) {
-        console.error('[DEBUG] UPDATE_TODO: Échec de la sauvegarde dans localStorage');
-      }
+      // IMPORTANT: Sauvegarde immédiate puis différée pour garantir la persistance
+      const immediateSuccess = saveTodosToStorage(state.todos);
+      console.log(`[DEBUG] UPDATE_TODO: Sauvegarde immédiate: ${immediateSuccess ? 'Réussie' : 'Échouée'}`);
+      
+      // Sauvegarde supplémentaire avec délai pour garantir que l'état est stable
+      window.setTimeout(() => {
+        const delayedSuccess = saveTodosToStorage(state.todos);
+        console.log(`[DEBUG] UPDATE_TODO: Sauvegarde différée (100ms): ${delayedSuccess ? 'Réussie' : 'Échouée'}`);
+      }, 100);
     },
     DELETE_TODO(state, id) {
       console.log('[DEBUG] DELETE_TODO:', id);
@@ -493,29 +523,103 @@ export default createStore({
       }
     },
     async updateTodo({ commit, state }, todo) {
+      console.log('[DEBUG] Action updateTodo - Début:', todo);
+      
+      if (!todo) {
+        console.error('[DEBUG] Action updateTodo: Tentative de mise à jour d\'une tâche nulle');
+        return { success: false, error: 'Tâche non valide' };
+      }
+      
+      // CORRECTIF CRITIQUE: S'assurer que la tâche a les deux types d'ID (id et _id)
+      if (todo.id && !todo._id) todo._id = todo.id;
+      if (todo._id && !todo.id) todo.id = todo._id;
+      
+      // Sauvegarde préventive de l'état actuel des tâches
+      const currentTodos = [...state.todos];
+      console.log(`[DEBUG] Action updateTodo: Sauvegarde préventive de ${currentTodos.length} tâches`);
+      
+      // Vérification préventive si la tâche existe
+      const todoId = todo._id || todo.id;
+      const todoExists = todoId && currentTodos.some(t => 
+        (t._id && t._id === todoId) || (t.id && t.id === todoId)
+      );
+      
+      if (!todoExists) {
+        console.warn(`[DEBUG] Action updateTodo: Tâche ${todoId} non trouvée dans la liste locale. Tentative de mise à jour sur le serveur uniquement.`);
+      }
+      
       commit('SET_ERROR', null);
       try {
         // Utiliser l'ID approprié (compatibilité MongoDB/PostgreSQL)
         const todoId = todo._id || todo.id;
+        console.log(`[DEBUG] Action updateTodo: Envoi de la mise à jour au serveur pour l'ID ${todoId}`);
+        
         const { data } = await axios.put(`/todos/${todoId}`, todo);
+        console.log('[DEBUG] Action updateTodo: Réponse du serveur:', data);
         
         // Si l'objet a seulement id mais pas _id, ajouter _id pour la compatibilité frontend
         if (data.id && !data._id) {
           data._id = data.id;
         }
         
+        // CORRECTIF CRITIQUE: Mettre à jour immédiatement sans attendre
         commit('UPDATE_TODO', data);
         commit('SET_OFFLINE_MODE', false);
+        
+        // Vérification post-mise à jour
+        window.setTimeout(() => {
+          const updatedTodoExists = state.todos.some(t => 
+            (t._id && t._id === todoId) || (t.id && t.id === todoId)
+          );
+          
+          if (!updatedTodoExists) {
+            console.error(`[DEBUG] Action updateTodo: La tâche mise à jour ${todoId} a disparu après la mise à jour!`);
+            console.log('[DEBUG] Action updateTodo: Réapplication forcée de la mise à jour');
+            commit('UPDATE_TODO', data);
+          } else {
+            console.log(`[DEBUG] Action updateTodo: Mise à jour confirmée pour la tâche ${todoId}`);
+          }
+        }, 100);
+        
         return { success: true, data };
       } catch (error) {
+        console.error('[DEBUG] Action updateTodo: Erreur lors de la mise à jour:', error);
+        
         const errorMessage = error.response?.data?.error || 'Erreur lors de la mise à jour de la tâche';
         commit('SET_ERROR', errorMessage);
         
         // Si pas de réponse du serveur, utiliser le stockage local
         if (!error.response) {
+          console.log('[DEBUG] Action updateTodo: Pas de réponse du serveur, mise à jour locale uniquement');
+          commit('SET_OFFLINE_MODE', true);
+          
+          // CORRECTIF CRITIQUE: Utiliser UPDATE_TODO même en mode offline
+          commit('UPDATE_TODO', todo);
+          
+          // Double vérification après mise à jour
+          window.setTimeout(() => {
+            const todoStillExists = state.todos.some(t => 
+              (t._id && t._id === todoId) || (t.id && t.id === todoId)
+            );
+            
+            if (!todoStillExists) {
+              console.error(`[DEBUG] Action updateTodo: La tâche ${todoId} a disparu après la mise à jour locale!`);
+              console.log('[DEBUG] Action updateTodo: Réapplication forcée');
+              commit('UPDATE_TODO', todo);
+            }
+          }, 100);
+          
+          return { success: true, data: todo, offline: true };
+        }
+        
+        // En cas d'erreur du serveur mais avec une réponse
+        console.error('[DEBUG] Action updateTodo: Erreur serveur avec réponse:', errorMessage);
+        
+        // SAUVEGARDE DE SECOURS: Si la mise à jour échoue mais que nous avons la tâche locale, essayons de la mettre à jour
+        if (todoExists) {
+          console.log('[DEBUG] Action updateTodo: Tentative de mise à jour locale après échec serveur');
           commit('SET_OFFLINE_MODE', true);
           commit('UPDATE_TODO', todo);
-          return { success: true, data: todo, offline: true };
         }
         
         return { success: false, error: errorMessage };
