@@ -273,6 +273,20 @@ export default {
     onMounted(async () => {
       console.log('[DEBUG] Application démarrée - Initialisation...');
       
+      // Ajouter un écouteur d'événement pour la déconnexion forcée
+      window.addEventListener('force-logout', (event) => {
+        console.log('[DEBUG] Événement de déconnexion forcée reçu:', event.detail);
+        
+        // Afficher une notification à l'utilisateur
+        store.commit('SET_NOTIFICATION_STATUS', {
+          success: false,
+          message: event.detail?.message || 'Session expirée. Veuillez vous reconnecter.'
+        });
+        
+        // Forcer la déconnexion
+        store.commit('LOGOUT');
+      });
+      
       // Tenter de récupérer l'utilisateur si les informations sont partiellement disponibles
       await recoverUserIfNeeded();
       

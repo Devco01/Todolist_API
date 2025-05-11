@@ -366,31 +366,61 @@ const userExists = async (username, email) => {
   }
 };
 
-// Obtenir un utilisateur par ID
+// Récupérer un utilisateur par son ID
 const getUserById = async (userId) => {
   try {
+    console.log('[AUTH] Récupération de l\'utilisateur par ID:', userId);
+    
     const UserModel = getUserModel();
     if (!UserModel) {
-      throw new Error('Modèle utilisateur non disponible');
-    }
-    
-    const user = await UserModel.findByPk(userId);
-    
-    if (!user) {
+      console.error('[AUTH] Modèle utilisateur non disponible');
       return null;
     }
     
-    // Retourner l'utilisateur sans le mot de passe
-    return {
-      id: user.id,
-      username: user.username,
-      email: user.email,
-      isAdmin: user.isAdmin,
-      createdAt: user.createdAt
-    };
+    // Vérifier le format d'UUID
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(userId)) {
+      console.error(`[AUTH] Format d'ID utilisateur invalide: ${userId}`);
+      return null;
+    }
+    
+    // Vérifier si l'utilisateur existe
+    try {
+      const user = await UserModel.findByPk(userId);
+      
+      if (!user) {
+        console.warn(`[AUTH] Utilisateur avec ID ${userId} non trouvé dans la base de données`);
+        
+        // Vérifier si c'est un problème de connexion à la base de données
+        const sequelize = getSequelize();
+        if (sequelize) {
+          try {
+            // Tester la connexion
+            const [testResult] = await sequelize.query('SELECT 1 as test');
+            const connectionOk = testResult && testResult.length > 0;
+            
+            if (!connectionOk) {
+              console.error('[AUTH] Problème de connexion à la base de données lors de la récupération utilisateur');
+            } else {
+              console.log('[AUTH] Connexion à la base de données OK, utilisateur vraiment introuvable');
+            }
+          } catch (testError) {
+            console.error('[AUTH] Erreur lors du test de connexion BDD:', testError);
+          }
+        }
+        
+        return null;
+      }
+      
+      console.log('[AUTH] Utilisateur récupéré avec succès:', user.username);
+      return user;
+    } catch (error) {
+      console.error('[AUTH] Erreur lors de la récupération de l\'utilisateur:', error);
+      return null;
+    }
   } catch (error) {
-    console.error('Erreur lors de la récupération de l\'utilisateur:', error);
-    throw error;
+    console.error('[AUTH] Erreur lors de la récupération de l\'utilisateur par ID:', error);
+    return null;
   }
 };
 

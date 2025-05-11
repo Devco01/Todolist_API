@@ -50,11 +50,34 @@ router.post('/', protect, async (req, res) => {
       });
     }
     
+    // Vérifier explicitement que l'utilisateur existe dans la base de données
+    const { getUserModel } = require('../models/UserPg');
+    const UserModel = getUserModel();
+    let userExists = false;
+    
+    if (UserModel) {
+      try {
+        const user = await UserModel.findByPk(req.user.id);
+        userExists = !!user;
+        console.log(`POST /todos - Vérification de l'existence de l'utilisateur ${req.user.id}: ${userExists ? 'Trouvé' : 'Non trouvé'}`);
+        
+        if (!userExists) {
+          return res.status(400).json({ 
+            error: 'Session invalide', 
+            details: 'Votre compte utilisateur semble ne plus exister. Veuillez vous reconnecter.'
+          });
+        }
+      } catch (userCheckError) {
+        console.error('POST /todos - Erreur lors de la vérification de l\'utilisateur:', userCheckError);
+        // On continue malgré l'erreur mais on log
+      }
+    }
+    
     // Ajouter l'ID de l'utilisateur connecté
     todoData.userId = req.user.id;
     
     // Debug de l'ID utilisateur
-    console.log(`POST /todos - Association avec l'utilisateur ID: ${todoData.userId}`);
+    console.log(`POST /todos - Association avec l'utilisateur ID: ${todoData.userId}, utilisateur vérifié: ${userExists}`);
     
     // S'assurer que dueDate est au bon format (YYYY-MM-DD) pour le stockage
     if (todoData.dueDate) {
