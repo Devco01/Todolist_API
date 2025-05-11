@@ -95,12 +95,20 @@ export default {
       this.error = null;
       
       try {
+        console.log('Envoi des données d\'inscription:', {
+          username: this.username,
+          email: this.email,
+          password: '***MASQUÉ***'
+        });
+        
         // Envoyer la requête d'inscription
         const { data } = await axios.post('/auth/register', {
           username: this.username,
           email: this.email,
           password: this.password
         });
+        
+        console.log('Réponse d\'inscription reçue:', data);
         
         // Stocker le token dans le localStorage
         localStorage.setItem('authToken', data.token);
@@ -112,7 +120,23 @@ export default {
         // Rediriger vers la page d'accueil
         this.$router.push('/');
       } catch (error) {
-        this.error = error.response?.data?.message || 'Erreur lors de l\'inscription';
+        console.error('Détails de l\'erreur d\'inscription:', error);
+        
+        let errorMessage = 'Erreur lors de l\'inscription';
+        
+        // Récupérer le message d'erreur détaillé
+        if (error.response) {
+          console.error('Réponse d\'erreur du serveur:', error.response.data);
+          errorMessage = error.response.data.message || 
+                        `Erreur serveur: ${error.response.status} ${error.response.statusText}`;
+        } else if (error.request) {
+          errorMessage = 'Le serveur n\'a pas répondu à la requête';
+          console.error('Aucune réponse reçue:', error.request);
+        } else {
+          errorMessage = error.message;
+        }
+        
+        this.error = errorMessage;
         console.error('Erreur d\'inscription:', error);
       } finally {
         this.loading = false;

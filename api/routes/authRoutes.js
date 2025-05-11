@@ -13,10 +13,23 @@ authService.initAuthService();
  */
 router.post('/register', async (req, res) => {
   try {
+    console.log('[AUTH-ROUTE] Requête d\'inscription reçue');
     const { username, email, password } = req.body;
+    
+    console.log('[AUTH-ROUTE] Données reçues:', {
+      username,
+      email,
+      password: password ? '***MASQUÉ***' : 'MANQUANT'
+    });
     
     // Vérification des données requises
     if (!username || !email || !password) {
+      console.log('[AUTH-ROUTE] Données manquantes:', {
+        username: !!username,
+        email: !!email,
+        password: !!password
+      });
+      
       return res.status(400).json({
         success: false,
         message: 'Veuillez fournir un nom d\'utilisateur, un email et un mot de passe'
@@ -25,11 +38,14 @@ router.post('/register', async (req, res) => {
     
     // Validation du mot de passe
     if (password.length < 6) {
+      console.log('[AUTH-ROUTE] Mot de passe trop court:', password.length);
       return res.status(400).json({
         success: false,
         message: 'Le mot de passe doit comporter au moins 6 caractères'
       });
     }
+    
+    console.log('[AUTH-ROUTE] Appel au service d\'authentification pour l\'inscription');
     
     // Enregistrer l'utilisateur
     const result = await authService.registerUser({
@@ -37,6 +53,8 @@ router.post('/register', async (req, res) => {
       email,
       password
     });
+    
+    console.log('[AUTH-ROUTE] Inscription réussie pour:', username);
     
     // Définir le token dans un cookie
     res.cookie('token', result.token, {
@@ -52,10 +70,26 @@ router.post('/register', async (req, res) => {
       token: result.token
     });
   } catch (error) {
-    console.error('Erreur lors de l\'enregistrement:', error);
+    console.error('[AUTH-ROUTE] Erreur lors de l\'enregistrement:', error);
+    
+    // Extraire le message d'erreur le plus précis possible
+    let errorMessage = error.message || 'Erreur lors de l\'enregistrement';
+    
+    // Si c'est une erreur de validation Sequelize
+    if (error.name === 'SequelizeValidationError') {
+      errorMessage = error.errors.map(e => e.message).join(', ');
+      console.error('[AUTH-ROUTE] Erreurs de validation:', errorMessage);
+    }
+    
+    // Si c'est une erreur de contrainte unique
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      errorMessage = 'Un utilisateur avec ce nom d\'utilisateur ou cet email existe déjà';
+      console.error('[AUTH-ROUTE] Erreur de contrainte unique');
+    }
+    
     res.status(400).json({
       success: false,
-      message: error.message || 'Erreur lors de l\'enregistrement'
+      message: errorMessage
     });
   }
 });
@@ -67,10 +101,18 @@ router.post('/register', async (req, res) => {
  */
 router.post('/login', async (req, res) => {
   try {
+    console.log('[AUTH-ROUTE] Requête de connexion reçue');
     const { username, password } = req.body;
+    
+    console.log('[AUTH-ROUTE] Tentative de connexion pour:', username);
     
     // Vérification des données requises
     if (!username || !password) {
+      console.log('[AUTH-ROUTE] Données de connexion manquantes:', {
+        username: !!username,
+        password: !!password
+      });
+      
       return res.status(400).json({
         success: false,
         message: 'Veuillez fournir un nom d\'utilisateur et un mot de passe'
@@ -79,6 +121,8 @@ router.post('/login', async (req, res) => {
     
     // Connecter l'utilisateur
     const result = await authService.loginUser(username, password);
+    
+    console.log('[AUTH-ROUTE] Connexion réussie pour:', username);
     
     // Définir le token dans un cookie
     res.cookie('token', result.token, {
@@ -94,7 +138,7 @@ router.post('/login', async (req, res) => {
       token: result.token
     });
   } catch (error) {
-    console.error('Erreur lors de la connexion:', error);
+    console.error('[AUTH-ROUTE] Erreur lors de la connexion:', error);
     res.status(401).json({
       success: false,
       message: error.message || 'Identifiants incorrects'

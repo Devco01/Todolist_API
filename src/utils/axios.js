@@ -22,11 +22,12 @@ instance.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
     }
     
-    console.log(`Requête ${config.method.toUpperCase()} vers ${config.url}`);
+    console.log(`[AXIOS] Requête ${config.method.toUpperCase()} vers ${config.url}`, 
+      config.data ? `avec données: ${JSON.stringify(config.data).replace(/"password":"[^"]*"/g, '"password":"***MASQUÉ***"')}` : 'sans données');
     return config;
   },
   error => {
-    console.error('Erreur lors de la préparation de la requête:', error);
+    console.error('[AXIOS] Erreur lors de la préparation de la requête:', error);
     return Promise.reject(error);
   }
 );
@@ -34,7 +35,7 @@ instance.interceptors.request.use(
 // Intercepteur pour gérer les erreurs de connexion
 instance.interceptors.response.use(
   response => {
-    console.log(`Réponse reçue: ${response.status} ${response.statusText}`);
+    console.log(`[AXIOS] Réponse reçue: ${response.status} ${response.statusText} pour ${response.config.url}`);
     
     // Compatibilité PostgreSQL (id) et MongoDB (_id)
     if (response.data) {
@@ -55,9 +56,21 @@ instance.interceptors.response.use(
     return response;
   },
   error => {
+    // Afficher les détails de l'erreur
+    if (error.response) {
+      console.error(`[AXIOS] Erreur de réponse: ${error.response.status} ${error.response.statusText}`,
+        'URL:', error.config?.url,
+        'Données:', error.response.data);
+    } else if (error.request) {
+      console.error('[AXIOS] Erreur de requête - Aucune réponse reçue:', 
+        'URL:', error.config?.url);
+    } else {
+      console.error('[AXIOS] Erreur:', error.message);
+    }
+    
     // Gérer les erreurs d'authentification (401)
     if (error.response && error.response.status === 401) {
-      console.warn('Session expirée ou non authentifiée');
+      console.warn('[AXIOS] Session expirée ou non authentifiée');
       // Nettoyer les données d'authentification
       localStorage.removeItem('authToken');
       localStorage.removeItem('user');

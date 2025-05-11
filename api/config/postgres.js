@@ -7,18 +7,20 @@ let sequelize = null;
 // Fonction pour se connecter à PostgreSQL
 const connectPostgres = async () => {
   try {
+    console.log('[POSTGRES] Démarrage du processus de connexion à PostgreSQL');
+    
     // Vérifier si le package pg est installé
     try {
       require('pg');
-      console.log('Package pg trouvé et chargé avec succès');
+      console.log('[POSTGRES] Package pg trouvé et chargé avec succès');
     } catch (pgError) {
-      console.error('Erreur lors du chargement du package pg:', pgError.message);
-      console.error('Tentative d\'installation automatique du package pg...');
+      console.error('[POSTGRES] Erreur lors du chargement du package pg:', pgError.message);
+      console.error('[POSTGRES] Tentative d\'installation automatique du package pg...');
       
       // Sur Vercel, on ne peut pas installer dynamiquement
       if (process.env.VERCEL === '1') {
-        console.error('Environnement Vercel détecté. Installation dynamique impossible.');
-        console.error('Veuillez ajouter pg aux dépendances et redéployer l\'application.');
+        console.error('[POSTGRES] Environnement Vercel détecté. Installation dynamique impossible.');
+        console.error('[POSTGRES] Veuillez ajouter pg aux dépendances et redéployer l\'application.');
         return null;
       }
       
@@ -28,6 +30,7 @@ const connectPostgres = async () => {
 
     // Si déjà connecté, retourner l'instance existante
     if (sequelize) {
+      console.log('[POSTGRES] Connexion existante réutilisée');
       return sequelize;
     }
 
@@ -35,11 +38,14 @@ const connectPostgres = async () => {
     const postgresUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL;
     
     if (!postgresUrl) {
-      console.warn('Aucune URL PostgreSQL définie, utilisation du stockage en mémoire uniquement');
+      console.warn('[POSTGRES] Aucune URL PostgreSQL définie, utilisation du stockage en mémoire uniquement');
+      console.log('[POSTGRES] Variables d\'environnement disponibles:', Object.keys(process.env).filter(key => 
+        key.includes('DB') || key.includes('SQL') || key.includes('POSTGRES')));
       return null;
     }
     
-    console.log('Tentative de connexion à PostgreSQL...');
+    console.log('[POSTGRES] URL PostgreSQL trouvée, tentative de connexion...');
+    console.log('[POSTGRES] Format de l\'URL:', postgresUrl.split('@')[0].replace(/:[^:]*@/, ':***@'));
     
     // Options SSL pour Neon
     const dialectOptions = {
@@ -63,9 +69,10 @@ const connectPostgres = async () => {
     });
     
     // Tester la connexion
+    console.log('[POSTGRES] Instance Sequelize créée, test de la connexion...');
     await sequelize.authenticate();
     
-    console.log('PostgreSQL connecté avec succès');
+    console.log('[POSTGRES] PostgreSQL connecté avec succès');
     
     // Mettre l'application globale au courant de la connexion
     if (global.app) {
@@ -74,16 +81,17 @@ const connectPostgres = async () => {
     
     return sequelize;
   } catch (error) {
-    console.error('Erreur de connexion à PostgreSQL:', error.message);
+    console.error('[POSTGRES] Erreur de connexion à PostgreSQL:', error.message);
+    console.error('[POSTGRES] Détails supplémentaires:', error);
     
     // Si on est sur Vercel, on peut continuer sans Postgres
     if (process.env.VERCEL === '1') {
-      console.log('Exécution sur Vercel, poursuite sans PostgreSQL');
+      console.log('[POSTGRES] Exécution sur Vercel, poursuite sans PostgreSQL');
     }
     
     // En mode développement, on peut fonctionner sans base de données
     if (process.env.NODE_ENV !== 'production') {
-      console.log('Mode développement : l\'application utilisera le stockage en mémoire');
+      console.log('[POSTGRES] Mode développement : l\'application utilisera le stockage en mémoire');
     }
     
     // Mettre l'application globale au courant de la connexion
