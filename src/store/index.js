@@ -138,7 +138,9 @@ export default createStore({
     notificationStatus: null,
     // Nouvelles propriétés pour l'authentification
     user: JSON.parse(localStorage.getItem('user')) || null,
-    isAuthenticated: !!localStorage.getItem('authToken')
+    isAuthenticated: !!localStorage.getItem('authToken'),
+    // Nouvelle propriété pour la synchronisation d'urgence
+    emergencySyncInProgress: false
   },
   getters: {
     sortedTodos: (state) => {
@@ -381,6 +383,9 @@ export default createStore({
       state.isAuthenticated = false;
       localStorage.removeItem('user');
       localStorage.removeItem('authToken');
+    },
+    SET_EMERGENCY_SYNC_IN_PROGRESS(state, value) {
+      state.emergencySyncInProgress = value;
     }
   },
   actions: {

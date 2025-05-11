@@ -104,7 +104,42 @@ router.post('/', protect, async (req, res) => {
       }
     }
     
-    // Essayer de créer la tâche avec gestion explicite de l'erreur de clé étrangère
+    // NOUVELLE PARTIE : Vérifier s'il s'agit d'une mise à jour (id présent) ou d'une création
+    if (todoData.id) {
+      console.log(`POST /todos - Détection d'une mise à jour pour la tâche existante ID: ${todoData.id}`);
+      
+      try {
+        // Vérifier que l'utilisateur peut modifier cette tâche
+        const existingTodo = await todoPgService.getTodoById(todoData.id, req.user.id);
+        
+        if (!existingTodo) {
+          console.log(`POST /todos - Tâche ID ${todoData.id} non trouvée ou appartient à un autre utilisateur`);
+          return res.status(404).json({ 
+            error: 'Tâche non trouvée ou non autorisée',
+            details: 'Cette tâche n\'existe pas ou ne vous appartient pas'
+          });
+        }
+        
+        // Mettre à jour la tâche existante
+        const updatedTodo = await todoPgService.updateTodo(todoData.id, todoData, req.user.id);
+        console.log(`POST /todos - Tâche ID ${todoData.id} mise à jour avec succès via POST`);
+        
+        return res.status(200).json(updatedTodo);
+      } catch (updateError) {
+        console.error(`POST /todos - Erreur lors de la mise à jour de la tâche ${todoData.id}:`, updateError);
+        
+        if (updateError.message.includes('non trouvée') || updateError.message.includes('non autorisée')) {
+          return res.status(404).json({ error: 'Tâche non trouvée ou non autorisée' });
+        }
+        
+        return res.status(500).json({ 
+          error: 'Erreur lors de la mise à jour de la tâche',
+          details: updateError.message
+        });
+      }
+    }
+    
+    // Sinon, c'est une création normale
     try {
       const newTodo = await todoPgService.createTodo(todoData);
       res.status(201).json(newTodo);

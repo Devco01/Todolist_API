@@ -22,7 +22,8 @@
 import { computed, watchEffect, onMounted, onUnmounted } from 'vue';
 import { useStore } from 'vuex';
 import NavBar from './components/NavBar.vue';
-import axios from 'axios';
+import axios from './utils/axios';
+import { mapState, mapMutations, mapActions } from 'vuex';
 
 export default {
   components: {
@@ -36,6 +37,7 @@ export default {
     // Cacher automatiquement la notification après 3 secondes
     let notificationTimeout = null;
     let syncInterval = null;
+    let emergencySyncInProgress = false;
     
     const clearNotification = () => {
       if (notificationTimeout) {
@@ -62,13 +64,57 @@ export default {
         console.log('Synchronisation périodique des tâches...');
         
         // Tenter d'abord une synchronisation d'urgence (push des modifications locales)
-        await emergencySyncTodos();
+        await emergencySync();
         
         // Puis récupérer les tâches du serveur (pull des modifications distantes)
         await store.dispatch('fetchTodos');
       } catch (error) {
         console.error('Erreur lors de la synchronisation périodique:', error);
       }
+    };
+    
+    // Nouvelle fonction de synchronisation d'urgence qui évite l'erreur 405
+    const emergencySync = async () => {
+      if (store.state.emergencySyncInProgress) {
+        console.log('[DEBUG] Synchronisation d\'urgence déjà en cours, ignorée');
+        return;
+      }
+      
+      store.commit('SET_EMERGENCY_SYNC_IN_PROGRESS', true);
+      console.log('[DEBUG] Synchronisation d\'urgence de', store.state.todos.length, 'tâches...');
+      
+      // Récupérer les tâches du store
+      const todos = [...store.state.todos];
+      let successCount = 0;
+      let errorCount = 0;
+      
+      for (const todo of todos) {
+        try {
+          const todoId = todo.id || todo._id;
+          console.log('[DEBUG] Mise à jour d\'urgence de la tâche', todoId);
+          
+          // Utiliser POST au lieu de PUT - contourne le problème 405
+          // Ajouter l'ID à l'objet pour que le serveur sache qu'il s'agit d'une mise à jour
+          const todoWithId = { ...todo };
+          if (todoId) {
+            todoWithId.id = todoId;
+            if (!todoWithId._id) todoWithId._id = todoId;
+          }
+          
+          const response = await axios.post('/todos', todoWithId);
+          
+          if (response.data) {
+            console.log('[DEBUG] Synchronisation d\'urgence réussie pour la tâche', todoId);
+            successCount++;
+          }
+        } catch (error) {
+          console.error('[DEBUG] Erreur lors de la sauvegarde d\'urgence:', error);
+          errorCount++;
+        }
+      }
+      
+      console.log(`[DEBUG] Synchronisation d'urgence terminée: ${successCount} réussies, ${errorCount} échouées`);
+      store.commit('SET_EMERGENCY_SYNC_IN_PROGRESS', false);
     };
     
     // Gestionnaire d'événement pour la reprise d'activité après veille
@@ -101,41 +147,6 @@ export default {
       }
     };
     
-    // Fonction pour synchroniser d'urgence toutes les tâches avec le serveur
-    const emergencySyncTodos = async () => {
-      try {
-        const todos = store.state.todos;
-        if (!Array.isArray(todos) || todos.length === 0) {
-          console.log('[DEBUG] Pas de tâches à synchroniser en urgence');
-          return;
-        }
-        
-        console.log(`[DEBUG] Synchronisation d'urgence de ${todos.length} tâches...`);
-        
-        // Tentative rapide de sauvegarde via l'API
-        for (const todo of todos) {
-          try {
-            // Si la tâche a un ID (déjà sauvegardée précédemment)
-            if (todo._id || todo.id) {
-              console.log(`[DEBUG] Mise à jour d'urgence de la tâche ${todo._id || todo.id}`);
-              await axios.put(`/todos/${todo._id || todo.id}`, todo);
-            } else {
-              // Si la tâche n'a pas d'ID (nouvelle tâche non sauvegardée)
-              console.log(`[DEBUG] Sauvegarde d'urgence d'une nouvelle tâche`);
-              await axios.post('/todos', todo);
-            }
-          } catch (e) {
-            console.error(`[DEBUG] Erreur lors de la sauvegarde d'urgence:`, e);
-            // Continuer avec les autres tâches même si celle-ci échoue
-          }
-        }
-        
-        console.log('[DEBUG] Synchronisation d\'urgence terminée');
-      } catch (error) {
-        console.error('[DEBUG] Erreur lors de la synchronisation d\'urgence:', error);
-      }
-    };
-    
     // Fonction pour récupérer l'utilisateur si les informations sont perdues
     const recoverUserIfNeeded = async () => {
       try {
@@ -159,8 +170,12 @@ export default {
           try {
             const response = await axios.get('/auth/me', {
               transformResponse: [data => {
-                const parsedData = JSON.parse(data);
-                return parsedData;
+                try {
+                  return JSON.parse(data);
+                } catch (error) {
+                  console.error('[DEBUG] Erreur de parsing JSON dans transformResponse:', error);
+                  return { error: 'Réponse invalide' };
+                }
               }],
               validateStatus: status => status < 500 // Accepter les codes 2xx-4xx
             });
@@ -183,6 +198,25 @@ export default {
               
               // Session est valide, continuer
               console.log('[DEBUG] Récupération session réussie ✓');
+              
+              // Vérification proactive des données dans localStorage
+              const todosData = localStorage.getItem('todos');
+              console.log('[DEBUG] Données trouvées dans localStorage au démarrage', todosData ? `(${todosData.length} caractères)` : '(aucune)');
+              
+              if (todosData && todosData.length > 10) {
+                const parsedTodos = JSON.parse(todosData);
+                console.log('[DEBUG] CHARGEMENT CRITIQUE:', parsedTodos.length, 'tâches trouvées dans localStorage');
+                store.commit('SET_TODOS', parsedTodos);
+              }
+              
+              // Exécuter la synchronisation d'urgence après un court délai
+              setTimeout(() => {
+                if (store.state.todos.length > 0) {
+                  console.log('[DEBUG] Synchronisation d\'urgence de', store.state.todos.length, 'tâches...');
+                  emergencySync();
+                }
+              }, 3000);
+              
               return true;
             } else {
               console.log('[DEBUG] Échec de la récupération de session, réponse invalide:', response.status);
@@ -200,23 +234,26 @@ export default {
               console.error('[DEBUG] Autre type d\'erreur lors de la récupération:', error);
             }
             
+            // Si c'est une erreur de parsing JSON, essayons de forcer un ping
+            if (error.name === 'SyntaxError' && error.message.includes('JSON.parse')) {
+              console.log('[DEBUG] Erreur de parsing JSON détectée, tentative de ping');
+              
+              // Envoi d'un ping pour vérifier si le serveur est disponible
+              try {
+                console.log('[DEBUG] Envoi d\'un ping pour maintenir la session active...');
+                await axios.get('/keep-alive');
+                console.log('[DEBUG] Ping réussi, session maintenue active');
+                
+                // Si le ping réussit, tenter de charger les tâches quand même
+                const todoResult = await store.dispatch('fetchTodos');
+                console.log('[DEBUG] Résultat de la récupération des tâches après ping:', todoResult);
+              } catch (pingError) {
+                console.error('[DEBUG] Erreur lors du ping:', pingError);
+              }
+            }
+            
             return false;
           }
-          
-          // Tentative de récupération des informations utilisateur
-          await store.dispatch('checkAuth');
-          
-          console.log('[DEBUG] Récupération session:', 
-            store.state.isAuthenticated ? 'Réussie ✓' : 'Échec ✗',
-            'User ID:', store.state.user?.id || 'Non disponible');
-            
-          // Si la session est récupérée, lancer immédiatement la récupération des tâches
-          if (store.state.isAuthenticated && store.state.user) {
-            console.log('[DEBUG] Session restaurée, chargement des tâches associées');
-            await store.dispatch('fetchTodos');
-          }
-          
-          return store.state.isAuthenticated;
         }
         
         return false;
@@ -467,7 +504,7 @@ export default {
           
           // Tentative de synchronisation d'urgence
           try {
-            await emergencySyncTodos();
+            await emergencySync();
           } catch (e) {
             console.error('[DEBUG] Échec de la synchronisation d\'urgence:', e);
           }

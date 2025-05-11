@@ -238,7 +238,7 @@ instance.interceptors.response.use(
         }
         else if ((method === 'put' || method === 'patch') && data) {
           const id = url.split('/').pop();
-          const index = localTodos.findIndex(t => t._id === id);
+          const index = localTodos.findIndex(t => t._id === id || t.id === id);
           if (index !== -1) {
             localTodos[index] = { ...localTodos[index], ...data };
             localStorage.setItem('todos', JSON.stringify(localTodos));
@@ -247,7 +247,7 @@ instance.interceptors.response.use(
         }
         else if (method === 'delete') {
           const id = url.split('/').pop();
-          localTodos = localTodos.filter(t => t._id !== id);
+          localTodos = localTodos.filter(t => t._id !== id && t.id !== id);
           localStorage.setItem('todos', JSON.stringify(localTodos));
           return Promise.resolve({ data: { success: true } });
         }
@@ -258,6 +258,37 @@ instance.interceptors.response.use(
         offline: true,
         originalError: error
       });
+    }
+    
+    // Pour les erreurs 405 Method Not Allowed, vérifier si c'est une requête PUT sur les tâches
+    if (error.response && error.response.status === 405) {
+      const url = error.config?.url || '';
+      const method = error.config?.method?.toLowerCase() || '';
+      
+      console.log(`[AXIOS] Erreur 405 détectée pour ${method} sur ${url}`);
+      
+      // Tenter d'utiliser POST à la place de PUT si c'est une opération sur les tâches
+      if ((method === 'put' || method === 'patch') && url.includes('/todos/')) {
+        console.log('[AXIOS] Tentative de conversion PUT → POST pour résoudre l\'erreur 405');
+        
+        // Extraire l'ID de la tâche
+        const taskId = url.split('/').pop();
+        const data = error.config.data ? JSON.parse(error.config.data) : {};
+        
+        // Ajouter l'ID à l'objet de données
+        data.id = taskId;
+        
+        // Créer une nouvelle requête POST
+        return axios.post('/todos', data)
+          .then(response => {
+            console.log('[AXIOS] Conversion PUT → POST réussie');
+            return response;
+          })
+          .catch(postError => {
+            console.error('[AXIOS] Échec de la conversion PUT → POST:', postError);
+            return Promise.reject(error); // Rejeter l'erreur originale si la conversion échoue
+          });
+      }
     }
     
     // Pour les autres types d'erreurs, les remonter avec plus d'infos
