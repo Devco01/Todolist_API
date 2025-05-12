@@ -4,6 +4,52 @@ import axios from '../utils/axios'
 // Clé utilisée pour le stockage dans localStorage
 const STORAGE_KEY = 'todos';
 
+// Nouvelle clé pour les timestamps des notifications envoyées
+const NOTIFICATION_SENT_KEY = 'notification_timestamps';
+
+// Fonction pour charger les timestamps des notifications du localStorage
+const loadNotificationTimestamps = () => {
+  try {
+    const timestamps = localStorage.getItem(NOTIFICATION_SENT_KEY);
+    return timestamps ? JSON.parse(timestamps) : {};
+  } catch (error) {
+    console.error('[DEBUG] Erreur lors du chargement des timestamps de notification:', error);
+    return {};
+  }
+};
+
+// Fonction pour enregistrer un nouveau timestamp de notification
+const saveNotificationTimestamp = (todoId, timestamp = Date.now()) => {
+  try {
+    const timestamps = loadNotificationTimestamps();
+    timestamps[todoId] = timestamp;
+    localStorage.setItem(NOTIFICATION_SENT_KEY, JSON.stringify(timestamps));
+    return true;
+  } catch (error) {
+    console.error('[DEBUG] Erreur lors de la sauvegarde du timestamp de notification:', error);
+    return false;
+  }
+};
+
+// Fonction pour vérifier si une notification a déjà été envoyée récemment
+const hasRecentNotification = (todoId, cooldownHours = 12) => {
+  try {
+    const timestamps = loadNotificationTimestamps();
+    const lastTimestamp = timestamps[todoId];
+    
+    if (!lastTimestamp) return false;
+    
+    const now = Date.now();
+    const cooldownMs = cooldownHours * 60 * 60 * 1000;
+    
+    // Si la dernière notification a été envoyée il y a moins de X heures, ne pas renvoyer
+    return (now - lastTimestamp) < cooldownMs;
+  } catch (error) {
+    console.error('[DEBUG] Erreur lors de la vérification des timestamps de notification:', error);
+    return false;
+  }
+};
+
 // Fonction pour charger les todos du localStorage avec gestion d'erreur améliorée
 const loadTodosFromStorage = () => {
   try {
@@ -98,6 +144,9 @@ const saveTodosToStorage = (todos) => {
   }
 }
 
+// Flag pour suivre si c'est la première fois que l'application charge
+let isFirstLoad = true;
+
 // *** DIAGNOSTIC DE LANCEMENT ***
 // Vérifier l'état initial du localStorage au chargement du module
 const initialDiagnostic = () => {
@@ -140,7 +189,9 @@ export default createStore({
     user: JSON.parse(localStorage.getItem('user')) || null,
     isAuthenticated: !!localStorage.getItem('authToken'),
     // Nouvelle propriété pour la synchronisation d'urgence
-    emergencySyncInProgress: false
+    emergencySyncInProgress: false,
+    // Nouvelle propriété pour contrôler les notifications au démarrage
+    suppressInitialNotifications: false
   },
   getters: {
     sortedTodos: (state) => {
@@ -398,10 +449,15 @@ export default createStore({
         console.log(`[DEBUG] ${localTodos.length} tâches récupérées depuis localStorage (secours)`);
         commit('SET_TODOS', localTodos);
         commit('SET_OFFLINE_MODE', true);
-        commit('SET_NOTIFICATION_STATUS', {
-          success: true,
-          message: 'Données chargées depuis la sauvegarde locale'
-        });
+        
+        // Afficher la notification seulement si ce n'est pas le premier chargement
+        if (!isFirstLoad) {
+          commit('SET_NOTIFICATION_STATUS', {
+            success: true,
+            message: 'Données chargées depuis la sauvegarde locale'
+          });
+        }
+        
         return { success: true, data: localTodos, offline: true };
       } else {
         console.warn('[DEBUG] Aucune donnée dans localStorage pour le chargement de secours');
@@ -442,10 +498,14 @@ export default createStore({
           
           // Ne pas écraser les tâches existantes dans le state car elles sont plus complètes
           commit('SET_OFFLINE_MODE', true);
-          commit('SET_NOTIFICATION_STATUS', {
-            success: true,
-            message: 'Conservation des données locales (problème de synchronisation)'
-          });
+          
+          // Afficher la notification seulement si ce n'est pas le premier chargement
+          if (!isFirstLoad) {
+            commit('SET_NOTIFICATION_STATUS', {
+              success: true,
+              message: 'Conservation des données locales (problème de synchronisation)'
+            });
+          }
           
           commit('SET_LOADING', false);
           return { success: true, data: existingTodos, offline: true, preserved: true };
@@ -455,11 +515,16 @@ export default createStore({
         commit('SET_TODOS', data);
         commit('SET_OFFLINE_MODE', false);
         
-        // Afficher un message de confirmation temporaire
-        commit('SET_NOTIFICATION_STATUS', {
-          success: true,
-          message: 'Synchronisation réussie avec le serveur'
-        });
+        // Afficher un message de confirmation temporaire seulement si ce n'est pas le premier chargement
+        if (!isFirstLoad) {
+          commit('SET_NOTIFICATION_STATUS', {
+            success: true,
+            message: 'Synchronisation réussie avec le serveur'
+          });
+        }
+        
+        // Mettre à jour le flag après le premier chargement
+        isFirstLoad = false;
         
         return { success: true, data };
       } catch (error) {
@@ -472,10 +537,14 @@ export default createStore({
         if (hasExistingTodos) {
           console.warn('[DEBUG] Erreur de récupération depuis le serveur, conservation des tâches existantes');
           commit('SET_OFFLINE_MODE', true);
-          commit('SET_NOTIFICATION_STATUS', {
-            success: true,
-            message: 'Conservation des données locales (problème de connexion)'
-          });
+          
+          // Afficher la notification seulement si ce n'est pas le premier chargement
+          if (!isFirstLoad) {
+            commit('SET_NOTIFICATION_STATUS', {
+              success: true,
+              message: 'Conservation des données locales (problème de connexion)'
+            });
+          }
           
           commit('SET_LOADING', false);
           return { success: true, data: existingTodos, offline: true, preserved: true };
@@ -487,15 +556,24 @@ export default createStore({
           commit('SET_OFFLINE_MODE', true);
           const localTodos = loadTodosFromStorage();
           
-          // Notification d'utilisation de données locales
-          commit('SET_NOTIFICATION_STATUS', {
-            success: true,
-            message: 'Utilisation des données locales (mode hors ligne)'
-          });
+          // Notification d'utilisation de données locales seulement si ce n'est pas le premier chargement
+          if (!isFirstLoad) {
+            commit('SET_NOTIFICATION_STATUS', {
+              success: true,
+              message: 'Utilisation des données locales (mode hors ligne)'
+            });
+          }
           
           commit('SET_TODOS', localTodos);
+          
+          // Mettre à jour le flag après le premier chargement
+          isFirstLoad = false;
+          
           return { success: true, data: localTodos, offline: true };
         }
+        
+        // Mettre à jour le flag après le premier chargement même en cas d'erreur
+        isFirstLoad = false;
         
         return { success: false, error: errorMessage };
       } finally {
@@ -763,9 +841,45 @@ export default createStore({
     async deleteTodo({ commit, state }, id) {
       commit('SET_ERROR', null);
       try {
-        await axios.delete(`/todos/${id}`);
+        console.log(`[DEBUG] Tentative de suppression de la tâche avec ID: ${id}, type: ${typeof id}`);
+        
+        // Vérification du type d'ID - PostgreSQL a besoin d'IDs numériques
+        // Si l'ID n'est pas numérique mais que le nom ressemble à un ID MongoDB aléatoire,
+        // nous devons d'abord chercher la tâche dans le state pour voir si elle a un ID numérique
+        let targetId = id;
+        
+        if (typeof id === 'string' && isNaN(parseInt(id))) {
+          console.log(`[DEBUG] ID non numérique détecté: ${id}, recherche d'un ID compatible PostgreSQL`);
+          
+          // Chercher la tâche dans le state
+          const todoInState = state.todos.find(t => 
+            (t._id && t._id === id) || (t.id && t.id === id)
+          );
+          
+          if (todoInState) {
+            // Si nous avons trouvé la tâche et qu'elle a un ID numérique, utiliser celui-ci
+            if (todoInState.id && !isNaN(parseInt(todoInState.id))) {
+              targetId = todoInState.id;
+              console.log(`[DEBUG] ID numérique trouvé pour cette tâche: ${targetId}`);
+            }
+          } else {
+            console.warn(`[DEBUG] Tâche avec ID ${id} non trouvée dans le state local`);
+          }
+        }
+        
+        // Supprimer localement avant de tenter sur le serveur pour une UI plus réactive
         commit('DELETE_TODO', id);
-        commit('SET_OFFLINE_MODE', false);
+        
+        try {
+          // Tenter de supprimer sur le serveur
+          await axios.delete(`/todos/${targetId}`);
+          console.log(`[DEBUG] Suppression réussie sur le serveur pour l'ID ${targetId}`);
+          commit('SET_OFFLINE_MODE', false);
+        } catch (serverError) {
+          console.error(`[DEBUG] Erreur serveur lors de la suppression: ${serverError}`);
+          // La tâche a déjà été supprimée localement, donc pas besoin de rollback
+        }
+        
         return { success: true };
       } catch (error) {
         const errorMessage = error.response?.data?.error || 'Erreur lors de la suppression de la tâche';
@@ -786,6 +900,14 @@ export default createStore({
       commit('SET_NOTIFICATION_STATUS', null);
       
       try {
+        // Si nous activons les notifications, vérifier le cooldown
+        if (notificationsEnabled) {
+          // Réinitialiser le timestamp lorsque les notifications sont activées/mises à jour
+          // pour éviter l'envoi immédiat si elles viennent d'être activées
+          saveNotificationTimestamp(todoId);
+          console.log(`[DEBUG] Timestamp de notification réinitialisé pour la tâche ${todoId}`);
+        }
+        
         const { data } = await axios.put(`/notifications/${todoId}`, {
           notificationsEnabled,
           notificationEmail
@@ -815,10 +937,23 @@ export default createStore({
       commit('SET_ERROR', null);
       commit('SET_NOTIFICATION_STATUS', null);
       
+      // Vérifier si une notification a déjà été envoyée récemment pour cette tâche
+      if (hasRecentNotification(todoId, 1)) { // 1 heure de cooldown pour les tests
+        console.log(`[DEBUG] Test de notification pour la tâche ${todoId} ignoré - déjà testé récemment`);
+        commit('SET_NOTIFICATION_STATUS', {
+          success: true,
+          message: 'Un email de test a déjà été envoyé récemment'
+        });
+        return { success: true, message: 'Email de test déjà envoyé, veuillez attendre avant de tester à nouveau' };
+      }
+      
       try {
         const { data } = await axios.post(`/notifications/test/${todoId}`, {
           testEmail
         });
+        
+        // Enregistrer le timestamp de cette notification
+        saveNotificationTimestamp(todoId);
         
         commit('SET_NOTIFICATION_STATUS', {
           success: true,

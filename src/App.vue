@@ -91,17 +91,26 @@ export default {
       for (const todo of todos) {
         try {
           const todoId = todo.id || todo._id;
-          console.log('[DEBUG] Mise à jour d\'urgence de la tâche', todoId);
           
-          // Utiliser POST au lieu de PUT - contourne le problème 405
-          // Ajouter l'ID à l'objet pour que le serveur sache qu'il s'agit d'une mise à jour
-          const todoWithId = { ...todo };
-          if (todoId) {
-            todoWithId.id = todoId;
-            if (!todoWithId._id) todoWithId._id = todoId;
+          if (!todoId) {
+            console.log('[DEBUG] Tâche sans ID, impossible de la synchroniser:', todo);
+            errorCount++;
+            continue;
           }
           
-          const response = await axios.post('/todos', todoWithId);
+          console.log('[DEBUG] Mise à jour d\'urgence de la tâche', todoId);
+          
+          // Utiliser PUT pour les tâches existantes
+          const todoWithId = { ...todo };
+          if (!todoWithId._id) todoWithId._id = todoId;
+          if (!todoWithId.id) todoWithId.id = todoId;
+          
+          // S'assurer que nous avons userId
+          if (store.state.user && store.state.user.id && !todoWithId.userId) {
+            todoWithId.userId = store.state.user.id;
+          }
+          
+          const response = await axios.put(`/todos/${todoId}`, todoWithId);
           
           if (response.data) {
             console.log('[DEBUG] Synchronisation d\'urgence réussie pour la tâche', todoId);
@@ -309,6 +318,20 @@ export default {
     // Charger les tâches au démarrage de l'application
     onMounted(async () => {
       console.log('[DEBUG] Application démarrée - Initialisation...');
+      
+      // Flag pour suivre si c'est le premier chargement de l'application
+      const isFirstTabOpen = !sessionStorage.getItem('appInitialized');
+      
+      // Marquer l'application comme initialisée dans cette session
+      sessionStorage.setItem('appInitialized', 'true');
+      
+      // Si c'est le premier onglet ouvert, supprimer toute notification existante
+      if (isFirstTabOpen) {
+        console.log('[DEBUG] Premier onglet détecté - Suppression des notifications automatiques');
+        store.commit('SET_NOTIFICATION_STATUS', null);
+      } else {
+        console.log('[DEBUG] Onglet supplémentaire détecté - Mode silencieux activé');
+      }
       
       // Ajouter un écouteur d'événement pour la déconnexion forcée
       window.addEventListener('force-logout', (event) => {
