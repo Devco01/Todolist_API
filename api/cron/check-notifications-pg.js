@@ -4,6 +4,37 @@ const { getTodoModel } = require('../models/TodoPg');
 const emailService = require('../services/emailService');
 
 /**
+ * Stockage en mémoire des dernières notifications envoyées
+ * Format: { todoId: timestamp }
+ */
+const notificationSentHistory = {};
+
+/**
+ * Vérifie si une notification a déjà été envoyée récemment pour une tâche
+ * @param {string|number} todoId - ID de la tâche
+ * @param {number} cooldownHours - Période de refroidissement en heures
+ * @returns {boolean} - True si une notification a été envoyée récemment
+ */
+const hasRecentNotification = (todoId, cooldownHours = 12) => {
+  const lastTimestamp = notificationSentHistory[todoId];
+  if (!lastTimestamp) return false;
+  
+  const now = Date.now();
+  const cooldownMs = cooldownHours * 60 * 60 * 1000;
+  
+  // Vérifier si la dernière notification est encore dans la période de cooldown
+  return (now - lastTimestamp) < cooldownMs;
+};
+
+/**
+ * Enregistre l'envoi d'une notification pour une tâche
+ * @param {string|number} todoId - ID de la tâche
+ */
+const recordNotificationSent = (todoId) => {
+  notificationSentHistory[todoId] = Date.now();
+};
+
+/**
  * Route cron pour vérifier les notifications et les envoyer
  * Cette route est appelée par Vercel Cron
  */
@@ -80,7 +111,23 @@ module.exports = async (req, res) => {
     console.log(`[CRON-PG] ${todos.length} tâches trouvées avec notifications activées`);
     
     // Filtrer les tâches pour lesquelles une notification doit être envoyée
-    const todosToNotify = todos.filter(todo => todo.shouldNotify());
+    const todosToNotify = todos.filter(todo => {
+      // Vérifier d'abord si la tâche justifie une notification selon ses propres critères
+      const shouldSendByTodoRules = todo.shouldNotify();
+      
+      if (!shouldSendByTodoRules) {
+        return false;
+      }
+      
+      // Vérifier ensuite le cooldown pour éviter les notifications répétées
+      const todoId = todo.id || todo._id;
+      if (hasRecentNotification(todoId)) {
+        console.log(`[CRON-PG] Cooldown actif pour la tâche ${todoId}, notification ignorée`);
+        return false;
+      }
+      
+      return true;
+    });
     
     console.log(`[CRON-PG] ${todosToNotify.length} tâches nécessitent une notification`);
     
@@ -97,6 +144,8 @@ module.exports = async (req, res) => {
     const results = [];
     for (const todo of todosToNotify) {
       try {
+        const todoId = todo.id || todo._id;
+        
         // Construire le contenu de l'email
         const emailData = {
           to: todo.notificationEmail,
@@ -134,8 +183,11 @@ module.exports = async (req, res) => {
         // Marquer la notification comme envoyée
         await todo.update({ notificationSent: true });
         
+        // Enregistrer l'envoi dans notre système de cooldown
+        recordNotificationSent(todoId);
+        
         results.push({
-          todoId: todo.id,
+          todoId: todoId,
           title: todo.title,
           success: true,
           email: todo.notificationEmail

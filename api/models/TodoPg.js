@@ -136,7 +136,7 @@ const defineTodoModel = () => {
       
       try {
         // Construire une date/heure d'échéance
-        const dateStr = `${this.dueDate}T${this.dueTime || '00:00'}:00`;
+        const dateStr = `${this.dueDate}T${this.dueTime || '08:00'}:00`;
         dueDateTime = new Date(dateStr);
         
         // Vérifier si la date est valide
@@ -159,6 +159,7 @@ const defineTodoModel = () => {
         - Date d'échéance: ${dueDateTime.toISOString()}
         - Est aujourd'hui: ${isToday}
         - Notification déjà envoyée: ${this.notificationSent || false}
+        - Heure actuelle: ${now.getHours()}:${now.getMinutes()}
       `);
       
       // Ne pas notifier les tâches passées
@@ -172,7 +173,23 @@ const defineTodoModel = () => {
       }
       
       // Notification uniquement pour les tâches d'aujourd'hui
-      return isToday;
+      if (!isToday) {
+        return false;
+      }
+      
+      // NOUVELLE LOGIQUE: Vérifier l'heure pour décider si on envoie maintenant
+      // Par défaut, envoyer les notifications à 8h00 du matin
+      const targetHour = 8; // 8h du matin
+      const currentHour = now.getHours();
+      
+      // Si l'heure actuelle est avant 8h, ne pas encore envoyer
+      if (currentHour < targetHour) {
+        console.log(`[NOTIFICATION] Trop tôt pour envoyer (${currentHour}h vs ${targetHour}h), attente...`);
+        return false;
+      }
+      
+      // Si c'est après 8h et que la notification n'a pas été envoyée, l'envoyer
+      return true;
     } catch (error) {
       console.error('Erreur lors de la vérification de notification pour la tâche:', this.title, error);
       return false;
