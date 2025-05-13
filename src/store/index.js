@@ -50,7 +50,164 @@ const hasRecentNotification = (todoId, cooldownHours = 12) => {
   }
 };
 
-// Fonction pour charger les todos du localStorage avec gestion d'erreur améliorée
+// Fonction pour sauvegarder les todos dans le localStorage avec gestion d'erreur
+const saveTodosToStorage = (todos) => {
+  try {
+    // Vérifier que todos est bien un tableau
+    if (!Array.isArray(todos)) {
+      console.error('[DEBUG] Tentative de sauvegarde de données non valides dans localStorage:', todos)
+      return false
+    }
+    
+    // PROTECTION ANTI-EFFACEMENT: Vérifier si on tente de sauvegarder un tableau vide 
+    // alors que des données existent déjà dans le localStorage
+    if (todos.length === 0) {
+      const existingData = localStorage.getItem(STORAGE_KEY);
+      if (existingData && existingData.length > 2 && existingData !== '[]') {
+        try {
+          const existingTodos = JSON.parse(existingData);
+          if (Array.isArray(existingTodos) && existingTodos.length > 0) {
+            console.warn('[DEBUG] PROTECTION ANTI-EFFACEMENT: Tentative d\'écraser des données existantes avec un tableau vide! Opération annulée.');
+            console.log('[DEBUG] Données existantes préservées:', existingData.substring(0, 100) + '...');
+            return false; // Ne pas sauvegarder un tableau vide par dessus des données existantes
+          }
+        } catch (parseError) {
+          console.error('[DEBUG] Erreur lors de la vérification des données existantes:', parseError);
+        }
+      }
+    }
+    
+    // Sauvegarder les données
+    const jsonString = JSON.stringify(todos);
+    console.log('[DEBUG] Sauvegarde dans localStorage:', jsonString);
+    
+    // NOUVELLE STRATÉGIE: Doublement des sauvegardes pour éviter la corruption
+    localStorage.setItem(STORAGE_KEY, jsonString);
+    
+    // Utiliser aussi un stockage de secours avec timestamp
+    const backupKey = `${STORAGE_KEY}_backup`;
+    localStorage.setItem(backupKey, jsonString);
+    localStorage.setItem(`${backupKey}_timestamp`, Date.now().toString());
+    
+    // Double vérification de la sauvegarde
+    const savedData = localStorage.getItem(STORAGE_KEY);
+    if (savedData !== jsonString) {
+      console.error('[DEBUG] Problème lors de la sauvegarde dans localStorage - Les données ne correspondent pas:', 
+        'Sauvegardé:', savedData, 
+        'Original:', jsonString);
+      
+      // Tentative de récupération depuis la sauvegarde
+      const backupData = localStorage.getItem(backupKey);
+      if (backupData === jsonString) {
+        console.log('[DEBUG] Récupération depuis la sauvegarde de secours');
+        localStorage.setItem(STORAGE_KEY, backupData);
+        return true;
+      }
+      
+      return false;
+    }
+    
+    console.log(`[DEBUG] ${todos.length} todos sauvegardés dans localStorage (${jsonString.length} caractères)`)
+    return true;
+  } catch (error) {
+    console.error('[DEBUG] Erreur lors de la sauvegarde des todos dans localStorage:', error)
+    
+    // En cas d'erreur, tenter une nouvelle fois avec un délai
+    try {
+      setTimeout(() => {
+        console.log('[DEBUG] Tentative de sauvegarde de secours après erreur...');
+        const jsonString = JSON.stringify(todos);
+        localStorage.setItem(STORAGE_KEY, jsonString);
+        console.log('[DEBUG] Sauvegarde de secours réussie');
+      }, 500);
+    } catch (retryError) {
+      console.error('[DEBUG] Échec de la sauvegarde de secours:', retryError);
+    }
+    
+    return false;
+  }
+}
+
+// NOUVELLE FONCTION: Récupération des datos en cas de problème
+const recoverTodosFromBackup = () => {
+  try {
+    console.log('[DEBUG] Tentative de récupération depuis la sauvegarde de secours...');
+    
+    // Vérifier d'abord les données principales
+    const mainData = localStorage.getItem(STORAGE_KEY);
+    if (mainData && mainData.length > 2 && mainData !== '[]') {
+      try {
+        const mainTodos = JSON.parse(mainData);
+        if (Array.isArray(mainTodos) && mainTodos.length > 0) {
+          console.log('[DEBUG] Données principales valides:', mainTodos.length, 'tâches');
+          return mainTodos;
+        }
+      } catch (parseError) {
+        console.error('[DEBUG] Erreur lors du parsing des données principales:', parseError);
+      }
+    }
+    
+    // Si les données principales sont invalides, essayer la sauvegarde
+    const backupKey = `${STORAGE_KEY}_backup`;
+    const backupData = localStorage.getItem(backupKey);
+    
+    if (backupData && backupData.length > 2 && backupData !== '[]') {
+      try {
+        const backupTodos = JSON.parse(backupData);
+        if (Array.isArray(backupTodos) && backupTodos.length > 0) {
+          console.log('[DEBUG] Récupération réussie depuis la sauvegarde:', backupTodos.length, 'tâches');
+          
+          // Restaurer dans le stockage principal
+          localStorage.setItem(STORAGE_KEY, backupData);
+          
+          return backupTodos;
+        }
+      } catch (parseError) {
+        console.error('[DEBUG] Erreur lors du parsing de la sauvegarde:', parseError);
+      }
+    }
+    
+    // Chercher d'autres sauvegardes nommées
+    const backupKeys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('todos_backup_')) {
+        backupKeys.push(key);
+      }
+    }
+    
+    if (backupKeys.length > 0) {
+      // Trier pour avoir la plus récente
+      backupKeys.sort();
+      const latestBackup = backupKeys[backupKeys.length - 1];
+      
+      try {
+        const namedBackupData = localStorage.getItem(latestBackup);
+        if (namedBackupData && namedBackupData.length > 2) {
+          const namedBackupTodos = JSON.parse(namedBackupData);
+          if (Array.isArray(namedBackupTodos) && namedBackupTodos.length > 0) {
+            console.log(`[DEBUG] Récupération réussie depuis la sauvegarde nommée ${latestBackup}:`, namedBackupTodos.length, 'tâches');
+            
+            // Restaurer dans le stockage principal
+            localStorage.setItem(STORAGE_KEY, namedBackupData);
+            
+            return namedBackupTodos;
+          }
+        }
+      } catch (parseError) {
+        console.error('[DEBUG] Erreur lors du parsing de la sauvegarde nommée:', parseError);
+      }
+    }
+    
+    console.log('[DEBUG] Aucune sauvegarde valide trouvée');
+    return [];
+  } catch (error) {
+    console.error('[DEBUG] Erreur lors de la récupération depuis les sauvegardes:', error);
+    return [];
+  }
+};
+
+// Modifions la fonction loadTodosFromStorage pour utiliser le système de récupération
 const loadTodosFromStorage = () => {
   try {
     const savedTodos = localStorage.getItem(STORAGE_KEY)
@@ -61,12 +218,19 @@ const loadTodosFromStorage = () => {
       console.log('[DEBUG] Contenu brut du localStorage:', savedTodos);
     }
     
-    // Si pas de données, renvoyer un tableau vide
-    if (!savedTodos) return []
-    
-    // Si les données sont juste "[]", c'est un tableau vide
-    if (savedTodos === '[]') {
-      console.log('[DEBUG] Tableau vide détecté dans localStorage');
+    // Si pas de données, essayer la récupération
+    if (!savedTodos || savedTodos === '[]') {
+      if (!savedTodos) {
+        console.log('[DEBUG] Aucune donnée trouvée, tentative de récupération...');
+      } else {
+        console.log('[DEBUG] Tableau vide détecté dans localStorage, tentative de récupération...');
+      }
+      
+      const recoveredTodos = recoverTodosFromBackup();
+      if (recoveredTodos.length > 0) {
+        return recoveredTodos;
+      }
+      
       return [];
     }
     
@@ -101,46 +265,36 @@ const loadTodosFromStorage = () => {
           console.log('[DEBUG] Tentative de conversion objet -> tableau');
           return Object.values(parsedTodos);
         }
+        
+        // Si conversion impossible, tenter la récupération
+        const recoveredTodos = recoverTodosFromBackup();
+        if (recoveredTodos.length > 0) {
+          return recoveredTodos;
+        }
+        
         return []
       }
     } catch (parseError) {
       console.error('[DEBUG] Erreur de parsing JSON:', parseError, 'pour les données:', savedTodos);
+      
+      // En cas d'erreur de parsing, tenter la récupération
+      const recoveredTodos = recoverTodosFromBackup();
+      if (recoveredTodos.length > 0) {
+        return recoveredTodos;
+      }
+      
       return [];
     }
   } catch (error) {
     console.error('[DEBUG] Erreur lors du chargement des todos depuis localStorage:', error)
+    
+    // En cas d'erreur générale, tenter la récupération
+    const recoveredTodos = recoverTodosFromBackup();
+    if (recoveredTodos.length > 0) {
+      return recoveredTodos;
+    }
+    
     return []
-  }
-}
-
-// Fonction pour sauvegarder les todos dans le localStorage avec gestion d'erreur
-const saveTodosToStorage = (todos) => {
-  try {
-    // Vérifier que todos est bien un tableau
-    if (!Array.isArray(todos)) {
-      console.error('[DEBUG] Tentative de sauvegarde de données non valides dans localStorage:', todos)
-      return false
-    }
-    
-    // Sauvegarder les données
-    const jsonString = JSON.stringify(todos);
-    console.log('[DEBUG] Sauvegarde dans localStorage:', jsonString);
-    localStorage.setItem(STORAGE_KEY, jsonString)
-    
-    // Double vérification de la sauvegarde
-    const savedData = localStorage.getItem(STORAGE_KEY);
-    if (savedData !== jsonString) {
-      console.error('[DEBUG] Problème lors de la sauvegarde dans localStorage - Les données ne correspondent pas:', 
-        'Sauvegardé:', savedData, 
-        'Original:', jsonString);
-      return false
-    }
-    
-    console.log(`[DEBUG] ${todos.length} todos sauvegardés dans localStorage (${jsonString.length} caractères)`)
-    return true
-  } catch (error) {
-    console.error('[DEBUG] Erreur lors de la sauvegarde des todos dans localStorage:', error)
-    return false
   }
 }
 
@@ -421,6 +575,39 @@ export default createStore({
       state.isAuthenticated = value;
     },
     LOGOUT(state) {
+      // SÉCURITÉ CRITIQUE: Sauvegarder les tâches actuelles avant de se déconnecter
+      if (state.todos && state.todos.length > 0) {
+        console.log(`[DEBUG] Sauvegarde de sécurité avant déconnexion: ${state.todos.length} tâches`);
+        
+        try {
+          // Créer une sauvegarde spéciale de déconnexion
+          const logoutBackupKey = `todos_logout_backup_${Date.now()}`;
+          const todosData = JSON.stringify(state.todos);
+          localStorage.setItem(logoutBackupKey, todosData);
+          console.log(`[DEBUG] Sauvegarde de déconnexion créée: ${logoutBackupKey}`);
+          
+          // Limiter le nombre de sauvegardes de déconnexion à 3
+          const backups = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith('todos_logout_backup_')) {
+              backups.push(key);
+            }
+          }
+          
+          if (backups.length > 3) {
+            backups.sort();
+            const toDelete = backups.slice(0, backups.length - 3);
+            toDelete.forEach(key => {
+              localStorage.removeItem(key);
+              console.log(`[DEBUG] Suppression d'une ancienne sauvegarde de déconnexion: ${key}`);
+            });
+          }
+        } catch (e) {
+          console.error('[DEBUG] Erreur lors de la sauvegarde avant déconnexion:', e);
+        }
+      }
+      
       // Vider les tâches du state avant de se déconnecter
       state.todos = [];
       

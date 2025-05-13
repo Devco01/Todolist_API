@@ -335,9 +335,144 @@ export default {
       }
     };
     
+    // Fonction spéciale pour rechercher et restaurer les sauvegardes après déconnexion
+    const checkForLogoutBackups = async () => {
+      // Chercher les sauvegardes de déconnexion
+      const backupKeys = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('todos_logout_backup_')) {
+          backupKeys.push(key);
+        }
+      }
+      
+      if (backupKeys.length === 0) {
+        console.log('[DEBUG] Aucune sauvegarde de déconnexion trouvée');
+        return false;
+      }
+      
+      // Trier pour avoir la plus récente
+      backupKeys.sort();
+      const latestBackup = backupKeys[backupKeys.length - 1];
+      console.log(`[DEBUG] Sauvegarde de déconnexion trouvée: ${latestBackup}`);
+      
+      // Tenter de charger cette sauvegarde
+      try {
+        const backupData = localStorage.getItem(latestBackup);
+        if (!backupData || backupData.length <= 2) {
+          console.log('[DEBUG] Sauvegarde de déconnexion vide ou invalide');
+          return false;
+        }
+        
+        const backupTodos = JSON.parse(backupData);
+        if (!Array.isArray(backupTodos) || backupTodos.length === 0) {
+          console.log('[DEBUG] Sauvegarde de déconnexion ne contient pas de tâches valides');
+          return false;
+        }
+        
+        console.log(`[DEBUG] Sauvegarde de déconnexion contient ${backupTodos.length} tâches`);
+        
+        // Vérifier si les todos actuels sont vides (nouvelle connexion)
+        const currentTodos = store.state.todos;
+        if (Array.isArray(currentTodos) && currentTodos.length > 0) {
+          console.log('[DEBUG] Des tâches sont déjà présentes, pas besoin de restaurer');
+          return false;
+        }
+        
+        // Vérifier si l'utilisateur correspondant est le même
+        const currentUser = store.state.user;
+        if (!currentUser || !currentUser.id) {
+          console.log('[DEBUG] Pas d\'utilisateur connecté, restauration impossible');
+          return false;
+        }
+        
+        // Vérifier que les tâches appartiennent à l'utilisateur actuel
+        const userTodos = backupTodos.filter(todo => 
+          !todo.userId || todo.userId === currentUser.id
+        );
+        
+        if (userTodos.length === 0) {
+          console.log('[DEBUG] Aucune tâche correspondant à l\'utilisateur actuel dans la sauvegarde');
+          return false;
+        }
+        
+        console.log(`[DEBUG] ${userTodos.length} tâches correspondant à l'utilisateur actuel trouvées dans la sauvegarde`);
+        
+        // Demander à l'utilisateur s'il souhaite restaurer ses tâches
+        store.commit('SET_NOTIFICATION_STATUS', {
+          success: true,
+          message: `Vos ${userTodos.length} tâches précédentes ont été retrouvées. Restauration en cours...`
+        });
+        
+        // Restaurer les tâches
+        store.commit('SET_TODOS', userTodos);
+        
+        // Sauvegarder dans le localStorage
+        localStorage.setItem('todos', JSON.stringify(userTodos));
+        
+        // Supprimer cette sauvegarde après restauration
+        localStorage.removeItem(latestBackup);
+        
+        return true;
+      } catch (e) {
+        console.error('[DEBUG] Erreur lors de la restauration de la sauvegarde:', e);
+        return false;
+      }
+    };
+    
     // Charger les tâches au démarrage de l'application
     onMounted(async () => {
       console.log('[DEBUG] Application démarrée - Initialisation...');
+      
+      // SAUVEGARDE CRITIQUE: Stocker l'heure de dernière activité pour détecter les inactivités prolongées
+      const now = Date.now();
+      const lastActivity = parseInt(localStorage.getItem('last_activity') || '0');
+      const inactivityDuration = now - lastActivity;
+      
+      // Mise à jour de l'heure de dernière activité
+      localStorage.setItem('last_activity', now.toString());
+      
+      console.log(`[DEBUG] Dernière activité: ${lastActivity ? new Date(lastActivity).toLocaleString() : 'jamais'}`);
+      if (lastActivity) {
+        console.log(`[DEBUG] Temps d'inactivité: ${(inactivityDuration / (1000 * 60)).toFixed(1)} minutes`);
+      }
+      
+      // Vérification de sécurité si inactivité prolongée (plus de 30 minutes)
+      // Sauvegarder une copie des données dans un stockage de secours
+      if (lastActivity && inactivityDuration > 30 * 60 * 1000) {
+        console.log('[DEBUG] Inactivité prolongée détectée, sauvegarde de sécurité...');
+        const backupKey = 'todos_backup_' + new Date().toISOString().replace(/[:.]/g, '_');
+        
+        try {
+          // Copier les todos actuels dans un stockage de secours
+          const todosData = localStorage.getItem('todos');
+          if (todosData && todosData.length > 2) {
+            localStorage.setItem(backupKey, todosData);
+            console.log(`[DEBUG] Sauvegarde de sécurité créée: ${backupKey}`);
+            
+            // Limiter le nombre de sauvegardes à 5
+            const backups = [];
+            for (let i = 0; i < localStorage.length; i++) {
+              const key = localStorage.key(i);
+              if (key && key.startsWith('todos_backup_')) {
+                backups.push(key);
+              }
+            }
+            
+            // Trier et supprimer les plus anciennes si plus de 5
+            if (backups.length > 5) {
+              backups.sort();
+              const toDelete = backups.slice(0, backups.length - 5);
+              toDelete.forEach(key => {
+                localStorage.removeItem(key);
+                console.log(`[DEBUG] Suppression d'une ancienne sauvegarde: ${key}`);
+              });
+            }
+          }
+        } catch (e) {
+          console.error('[DEBUG] Erreur lors de la sauvegarde de sécurité:', e);
+        }
+      }
       
       // Flag pour suivre si c'est le premier chargement de l'application
       const isFirstTabOpen = !sessionStorage.getItem('appInitialized');
@@ -380,8 +515,11 @@ export default {
         console.error('[DEBUG] Erreur lors de la vérification de l\'authentification:', error);
       }
       
-      // Continuer avec le chargement des tâches (seulement si l'utilisateur est authentifié)
+      // Si l'utilisateur est authentifié, vérifier s'il y a des sauvegardes de déconnexion
       if (store.state.isAuthenticated) {
+        console.log('[DEBUG] Utilisateur authentifié - Vérification des sauvegardes de déconnexion');
+        await checkForLogoutBackups();
+        
         console.log('[DEBUG] Utilisateur authentifié - Chargement des tâches...');
         
         // *** CORRECTIF CRITIQUE: CHARGEMENT IMMÉDIAT DEPUIS LOCALSTORAGE ***
@@ -503,10 +641,46 @@ export default {
         const todosCount = store.state.todos.length;
         console.log(`[DEBUG] Nombre de tâches après chargement: ${todosCount}`);
         
-        // Si aucune tâche n'a été chargée mais qu'il y en a dans localStorage, charger celles-ci
-        if (todosCount === 0 && localTodos && Array.isArray(localTodos) && localTodos.length > 0) {
-          console.log('[DEBUG] Aucune tâche chargée depuis le serveur mais présentes en local, chargement de secours...');
-          store.commit('SET_TODOS', localTodos);
+        // PROTECTION CRITIQUE: Si aucune tâche n'a été chargée mais qu'il existe une sauvegarde, la restaurer
+        if (todosCount === 0) {
+          console.log('[DEBUG] Aucune tâche chargée, recherche de sauvegardes...');
+          
+          // Chercher d'abord dans les sauvegardes spéciales
+          const backupKeys = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith('todos_backup_')) {
+              backupKeys.push(key);
+            }
+          }
+          
+          // Si des sauvegardes existent, utiliser la plus récente
+          if (backupKeys.length > 0) {
+            backupKeys.sort();
+            const latestBackup = backupKeys[backupKeys.length - 1];
+            try {
+              const backupData = localStorage.getItem(latestBackup);
+              if (backupData && backupData.length > 2) {
+                const backupTodos = JSON.parse(backupData);
+                console.log(`[DEBUG] Restauration depuis la sauvegarde ${latestBackup}: ${backupTodos.length} tâches`);
+                store.commit('SET_TODOS', backupTodos);
+                
+                // Sauvegarder dans le stockage principal
+                localStorage.setItem('todos', backupData);
+                
+                // Notification à l'utilisateur
+                store.commit('SET_NOTIFICATION_STATUS', {
+                  success: true,
+                  message: 'Vos tâches ont été restaurées depuis une sauvegarde'
+                });
+              }
+            } catch (e) {
+              console.error('[DEBUG] Erreur lors de la restauration de la sauvegarde:', e);
+            }
+          } else if (localTodos && Array.isArray(localTodos) && localTodos.length > 0) {
+            console.log('[DEBUG] Aucune tâche chargée depuis le serveur mais présentes en local, chargement de secours...');
+            store.commit('SET_TODOS', localTodos);
+          }
         }
         
         // Force sauvegarder après tout le processus pour s'assurer que les données sont persistées
