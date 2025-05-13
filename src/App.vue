@@ -283,34 +283,54 @@ export default {
           return false;
         }
         
-        // Utiliser l'endpoint sécurisé pour le ping avec le token d'authentification
-        const response = await axios.get('/keep-alive/secure', {
-          headers: {
-            'Authorization': `Bearer ${token}`
+        // Utiliser un endpoint plus simple pour le ping
+        try {
+          // Essayer d'abord avec /auth/me qui est plus fiable
+          const response = await axios.get('/auth/me', {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            },
+            timeout: 5000 // Timeout de 5 secondes pour éviter de bloquer
+          });
+          
+          console.log('[DEBUG] Ping réussi via /auth/me');
+          
+          // Vérifier si un nouveau token est fourni 
+          const newToken = response.headers['x-auth-token'];
+          if (newToken && newToken !== token) {
+            console.log('[DEBUG] Nouveau token reçu dans le ping, mise à jour');
+            localStorage.setItem('authToken', newToken);
+            axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
           }
-        });
-        
-        // Vérifier si un nouveau token est fourni dans l'en-tête de réponse
-        const newToken = response.headers['x-auth-token'];
-        if (newToken && newToken !== token) {
-          console.log('[DEBUG] Nouveau token reçu dans le ping, mise à jour');
-          localStorage.setItem('authToken', newToken);
-          axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
+          
+          return true;
+        } catch (authError) {
+          console.warn('[DEBUG] Erreur lors du ping sur /auth/me:', authError.message);
+          
+          // Fallback vers un endpoint plus simple si /auth/me échoue
+          try {
+            const fallbackResponse = await axios.get('/keep-alive', {
+              timeout: 3000
+            });
+            
+            console.log('[DEBUG] Ping de secours réussi via /keep-alive');
+            return true;
+          } catch (fallbackError) {
+            console.error('[DEBUG] Échec du ping de secours:', fallbackError.message);
+            
+            // Si l'erreur est 401, la session a expiré
+            if (fallbackError.response && fallbackError.response.status === 401) {
+              console.warn('[DEBUG] Session expirée détectée lors du ping');
+              // Tenter de récupérer la session
+              const recovered = await recoverUserIfNeeded();
+              return recovered;
+            }
+            
+            return false;
+          }
         }
-        
-        console.log('[DEBUG] Ping réussi, session maintenue active');
-        return true;
       } catch (error) {
-        console.error('[DEBUG] Erreur lors du ping:', error);
-        
-        // Si l'erreur est 401, la session a expiré
-        if (error.response && error.response.status === 401) {
-          console.warn('[DEBUG] Session expirée détectée lors du ping');
-          // Tenter de récupérer la session
-          const recovered = await recoverUserIfNeeded();
-          return recovered;
-        }
-        
+        console.error('[DEBUG] Erreur générale lors du ping:', error);
         return false;
       }
     };
