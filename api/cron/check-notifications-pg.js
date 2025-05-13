@@ -2,12 +2,67 @@
 const { connectPostgres, getSequelize } = require('../config/postgres');
 const { getTodoModel } = require('../models/TodoPg');
 const emailService = require('../services/emailService');
+const fs = require('fs');
+const path = require('path');
+
+/**
+ * Chemin du fichier de persistance des notifications envoyées
+ */
+const HISTORY_FILE_PATH = path.join(__dirname, '../data/notification_history.json');
 
 /**
  * Stockage en mémoire des dernières notifications envoyées
  * Format: { todoId: timestamp }
  */
-const notificationSentHistory = {};
+let notificationSentHistory = {};
+
+/**
+ * Chargement de l'historique des notifications depuis le fichier
+ */
+const loadNotificationHistory = () => {
+  try {
+    // Vérifier si le répertoire data existe, sinon le créer
+    const dataDir = path.dirname(HISTORY_FILE_PATH);
+    if (!fs.existsSync(dataDir)) {
+      console.log('[CRON-PG] Création du répertoire de données pour l\'historique des notifications');
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    
+    // Vérifier si le fichier existe
+    if (fs.existsSync(HISTORY_FILE_PATH)) {
+      const content = fs.readFileSync(HISTORY_FILE_PATH, 'utf8');
+      console.log('[CRON-PG] Chargement de l\'historique des notifications:', 
+        content ? `${content.length} caractères` : 'fichier vide');
+      
+      if (content && content.trim().length > 0) {
+        notificationSentHistory = JSON.parse(content);
+        console.log('[CRON-PG] Historique des notifications chargé, nombre d\'entrées:', 
+          Object.keys(notificationSentHistory).length);
+      }
+    } else {
+      console.log('[CRON-PG] Fichier d\'historique des notifications non trouvé, création d\'un fichier vide');
+      saveNotificationHistory({}); // Créer un fichier vide
+    }
+  } catch (error) {
+    console.error('[CRON-PG] Erreur lors du chargement de l\'historique des notifications:', error);
+  }
+};
+
+/**
+ * Sauvegarde l'historique des notifications dans le fichier
+ */
+const saveNotificationHistory = (history = notificationSentHistory) => {
+  try {
+    const content = JSON.stringify(history);
+    fs.writeFileSync(HISTORY_FILE_PATH, content, 'utf8');
+    console.log('[CRON-PG] Historique des notifications sauvegardé,', Object.keys(history).length, 'entrées');
+  } catch (error) {
+    console.error('[CRON-PG] Erreur lors de la sauvegarde de l\'historique des notifications:', error);
+  }
+};
+
+// Charger l'historique des notifications au démarrage
+loadNotificationHistory();
 
 /**
  * Vérifie si une notification a déjà été envoyée récemment pour une tâche
@@ -17,13 +72,26 @@ const notificationSentHistory = {};
  */
 const hasRecentNotification = (todoId, cooldownHours = 12) => {
   const lastTimestamp = notificationSentHistory[todoId];
-  if (!lastTimestamp) return false;
+  if (!lastTimestamp) {
+    console.log(`[CRON-PG] Aucun historique de notification pour la tâche ${todoId}`);
+    return false;
+  }
   
   const now = Date.now();
   const cooldownMs = cooldownHours * 60 * 60 * 1000;
+  const elapsedHours = (now - lastTimestamp) / (1000 * 60 * 60);
   
   // Vérifier si la dernière notification est encore dans la période de cooldown
-  return (now - lastTimestamp) < cooldownMs;
+  const isInCooldown = (now - lastTimestamp) < cooldownMs;
+  
+  console.log(`[CRON-PG] Vérification du cooldown pour la tâche ${todoId}:
+    - Dernière notification: ${new Date(lastTimestamp).toISOString()}
+    - Temps écoulé: ${elapsedHours.toFixed(1)} heures
+    - Période de cooldown: ${cooldownHours} heures
+    - En période de cooldown: ${isInCooldown ? 'Oui' : 'Non'}
+  `);
+  
+  return isInCooldown;
 };
 
 /**
@@ -32,6 +100,9 @@ const hasRecentNotification = (todoId, cooldownHours = 12) => {
  */
 const recordNotificationSent = (todoId) => {
   notificationSentHistory[todoId] = Date.now();
+  // Sauvegarder l'historique après chaque envoi
+  saveNotificationHistory();
+  console.log(`[CRON-PG] Enregistrement de la notification pour la tâche ${todoId} à ${new Date().toISOString()}`);
 };
 
 /**
@@ -40,7 +111,7 @@ const recordNotificationSent = (todoId) => {
  */
 module.exports = async (req, res) => {
   try {
-    console.log('[CRON-PG] Vérification des notifications PostgreSQL déclenchée');
+    console.log('[CRON-PG] Vérification des notifications PostgreSQL déclenchée à', new Date().toISOString());
     
     // Vérification du token de sécurité (si configuré)
     const configToken = process.env.NOTIFICATION_CHECK_TOKEN;

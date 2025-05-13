@@ -118,16 +118,26 @@ const defineTodoModel = () => {
   // Méthodes additionnelles comme celle pour vérifier les notifications
   Todo.prototype.shouldNotify = function() {
     try {
+      console.log(`[NOTIFICATION] Évaluation de la tâche "${this.title}" (ID: ${this.id})`);
+      
       // Vérifications de base
-      if (!this.notificationsEnabled || this.completed) {
+      if (!this.notificationsEnabled) {
+        console.log(`[NOTIFICATION] Tâche "${this.title}": notifications désactivées`);
+        return false;
+      }
+      
+      if (this.completed) {
+        console.log(`[NOTIFICATION] Tâche "${this.title}": déjà complétée`);
         return false;
       }
       
       if (!this.notificationEmail) {
+        console.log(`[NOTIFICATION] Tâche "${this.title}": pas d'email de notification`);
         return false;
       }
       
       if (!this.dueDate) {
+        console.log(`[NOTIFICATION] Tâche "${this.title}": pas de date d'échéance`);
         return false;
       }
       
@@ -136,16 +146,19 @@ const defineTodoModel = () => {
       
       try {
         // Construire une date/heure d'échéance
-        const dateStr = `${this.dueDate}T${this.dueTime || '08:00'}:00`;
+        const dueTime = this.dueTime || '08:00'; // Heure par défaut: 8h du matin
+        const dateStr = `${this.dueDate}T${dueTime}:00`;
         dueDateTime = new Date(dateStr);
         
         // Vérifier si la date est valide
         if (isNaN(dueDateTime.getTime())) {
-          console.error('Date d\'échéance invalide pour la tâche:', this.title, dateStr);
+          console.error(`[NOTIFICATION] Date d'échéance invalide pour la tâche "${this.title}": ${dateStr}`);
           return false;
         }
+        
+        console.log(`[NOTIFICATION] Date d'échéance pour "${this.title}": ${dueDateTime.toISOString()}`);
       } catch (e) {
-        console.error('Erreur lors de la création de la date d\'échéance:', e);
+        console.error(`[NOTIFICATION] Erreur lors de la création de la date d'échéance pour "${this.title}":`, e);
         return false;
       }
       
@@ -155,25 +168,29 @@ const defineTodoModel = () => {
       const isToday = this.isDateToday(dueDateTime);
       
       // Journaliser les décisions de notification pour le débogage
-      console.log(`Évaluation de notification pour "${this.title}": 
+      console.log(`[NOTIFICATION] Évaluation de "${this.title}": 
         - Date d'échéance: ${dueDateTime.toISOString()}
-        - Est aujourd'hui: ${isToday}
-        - Notification déjà envoyée: ${this.notificationSent || false}
-        - Heure actuelle: ${now.getHours()}:${now.getMinutes()}
+        - Heure actuelle: ${now.toISOString()}
+        - Est aujourd'hui: ${isToday ? 'OUI' : 'NON'}
+        - Notification déjà envoyée: ${this.notificationSent ? 'OUI' : 'NON'}
+        - Heure locale: ${now.getHours()}:${now.getMinutes()}
       `);
       
       // Ne pas notifier les tâches passées
       if (dueDateTime < now) {
+        console.log(`[NOTIFICATION] Tâche "${this.title}": la date d'échéance est déjà passée`);
         return false;
       }
       
       // Si la notification a déjà été envoyée
       if (this.notificationSent) {
+        console.log(`[NOTIFICATION] Tâche "${this.title}": notification déjà envoyée`);
         return false;
       }
       
       // Notification uniquement pour les tâches d'aujourd'hui
       if (!isToday) {
+        console.log(`[NOTIFICATION] Tâche "${this.title}": pas prévue pour aujourd'hui`);
         return false;
       }
       
@@ -182,16 +199,19 @@ const defineTodoModel = () => {
       const targetHour = 8; // 8h du matin
       const currentHour = now.getHours();
       
-      // Si l'heure actuelle est avant 8h, ne pas encore envoyer
-      if (currentHour < targetHour) {
-        console.log(`[NOTIFICATION] Trop tôt pour envoyer (${currentHour}h vs ${targetHour}h), attente...`);
+      console.log(`[NOTIFICATION] Heure actuelle pour "${this.title}": ${currentHour}h vs heure cible: ${targetHour}h`);
+      
+      // Vérifiez également si nous avons dépassé minuit mais pas encore atteint 8h
+      if (currentHour >= 0 && currentHour < targetHour) {
+        console.log(`[NOTIFICATION] Trop tôt pour envoyer la notification pour "${this.title}" (${currentHour}h vs ${targetHour}h), attente...`);
         return false;
       }
       
       // Si c'est après 8h et que la notification n'a pas été envoyée, l'envoyer
+      console.log(`[NOTIFICATION] ENVOI de notification pour "${this.title}"`);
       return true;
     } catch (error) {
-      console.error('Erreur lors de la vérification de notification pour la tâche:', this.title, error);
+      console.error(`[NOTIFICATION] Erreur lors de la vérification de notification pour la tâche "${this.title}":`, error);
       return false;
     }
   };

@@ -487,8 +487,8 @@ export default createStore({
         
         console.log(`[DEBUG] ${data.length} todos récupérés depuis le serveur`);
         
-        // SOLUTION FORCÉE: Si le serveur renvoie un tableau vide mais qu'il y avait des tâches, 
-        // privilégier les tâches existantes comme mesure de sécurité
+        // CORRECTION CRITIQUE: Toujours privilégier les données locales si le serveur renvoie un tableau vide
+        // et que des tâches existent localement
         if (data.length === 0 && hasExistingTodos) {
           console.warn('[DEBUG] Le serveur a renvoyé un tableau vide alors que des tâches existent localement! Conservation des tâches locales.');
           
@@ -496,37 +496,40 @@ export default createStore({
           const saveSuccess = saveTodosToStorage(existingTodos);
           console.log('[DEBUG] Sauvegarde forcée des tâches existantes:', saveSuccess ? 'Réussie' : 'Échouée');
           
-          // Ne pas écraser les tâches existantes dans le state car elles sont plus complètes
-          commit('SET_OFFLINE_MODE', true);
+          // IMPORTANT: Ne pas commiter SET_TODOS qui écraserait les données
+          // On conserve explicitement l'état actuel
           
-          // Afficher la notification seulement si ce n'est pas le premier chargement
-          if (!isFirstLoad) {
-            commit('SET_NOTIFICATION_STATUS', {
-              success: true,
-              message: 'Conservation des données locales (problème de synchronisation)'
-            });
-          }
+          commit('SET_NOTIFICATION_STATUS', {
+            success: true,
+            message: 'Conservation des données locales (le serveur a renvoyé 0 tâches)'
+          });
           
           commit('SET_LOADING', false);
           return { success: true, data: existingTodos, offline: true, preserved: true };
         }
         
-        // Cas normal: le serveur a renvoyé des données
-        commit('SET_TODOS', data);
-        commit('SET_OFFLINE_MODE', false);
-        
-        // Afficher un message de confirmation temporaire seulement si ce n'est pas le premier chargement
-        if (!isFirstLoad) {
-          commit('SET_NOTIFICATION_STATUS', {
-            success: true,
-            message: 'Synchronisation réussie avec le serveur'
-          });
+        // Si le serveur renvoie des données, les utiliser
+        if (data.length > 0) {
+          commit('SET_TODOS', data);
+          commit('SET_OFFLINE_MODE', false);
+          
+          // Afficher un message de confirmation temporaire seulement si ce n'est pas le premier chargement
+          if (!isFirstLoad) {
+            commit('SET_NOTIFICATION_STATUS', {
+              success: true,
+              message: 'Synchronisation réussie avec le serveur'
+            });
+          }
+        } else if (data.length === 0 && existingTodos.length === 0) {
+          // Les deux sont vides, mettre à jour normalement
+          commit('SET_TODOS', []);
+          commit('SET_OFFLINE_MODE', false);
         }
         
         // Mettre à jour le flag après le premier chargement
         isFirstLoad = false;
         
-        return { success: true, data };
+        return { success: true, data: data.length > 0 ? data : existingTodos };
       } catch (error) {
         console.error('[DEBUG] Erreur lors de la récupération des todos:', error);
         
