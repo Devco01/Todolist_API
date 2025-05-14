@@ -113,6 +113,19 @@ module.exports = async (req, res) => {
   try {
     console.log('[CRON-PG] Vérification des notifications PostgreSQL déclenchée à', new Date().toISOString());
     
+    // Vérifier l'heure courante - n'exécuter qu'à 8h
+    const currentHour = new Date().getUTCHours();
+    if (currentHour !== 8) {
+      console.log(`[CRON-PG] Cron exécuté à ${currentHour}h UTC, mais nous n'envoyons des notifications qu'à 8h UTC`);
+      return res.status(200).json({
+        success: true,
+        message: `Ignoré - heure actuelle (${currentHour}h UTC) différente de l'heure d'envoi (8h UTC)`,
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    console.log(`[CRON-PG] Cron exécuté à l'heure d'envoi (8h UTC), traitement des notifications...`);
+    
     // Vérification du token de sécurité (si configuré)
     const configToken = process.env.NOTIFICATION_CHECK_TOKEN;
     const requestToken = req.query.token;
