@@ -117,29 +117,33 @@ export default {
         this.$store.commit('SET_USER', data.user);
         this.$store.commit('SET_AUTHENTICATED', true);
         
+        // Déclencher la synchronisation des tâches après l'inscription
+        this.synchronizeTodos();
+        
         // Rediriger vers la page d'accueil
         this.$router.push('/');
       } catch (error) {
-        console.error('Détails de l\'erreur d\'inscription:', error);
-        
-        let errorMessage = 'Erreur lors de l\'inscription';
-        
-        // Récupérer le message d'erreur détaillé
-        if (error.response) {
-          console.error('Réponse d\'erreur du serveur:', error.response.data);
-          errorMessage = error.response.data.message || 
-                        `Erreur serveur: ${error.response.status} ${error.response.statusText}`;
-        } else if (error.request) {
-          errorMessage = 'Le serveur n\'a pas répondu à la requête';
-          console.error('Aucune réponse reçue:', error.request);
-        } else {
-          errorMessage = error.message;
-        }
-        
-        this.error = errorMessage;
+        this.error = error.response?.data?.message || 'Erreur lors de l\'inscription';
         console.error('Erreur d\'inscription:', error);
       } finally {
         this.loading = false;
+      }
+    },
+    // Nouvelle méthode pour synchroniser les tâches après inscription
+    async synchronizeTodos() {
+      console.log('[SYNC] Synchronisation des tâches après inscription...');
+      
+      try {
+        // Récupérer les tâches du serveur et les fusionner avec les tâches locales
+        const result = await this.$store.dispatch('fetchTodos');
+        
+        if (result.success) {
+          console.log(`[SYNC] Synchronisation réussie, ${result.data?.length || 0} tâches disponibles`);
+        } else {
+          console.error('[SYNC] Échec de la synchronisation des tâches:', result.error);
+        }
+      } catch (error) {
+        console.error('[SYNC] Erreur lors de la synchronisation des tâches:', error);
       }
     }
   }
