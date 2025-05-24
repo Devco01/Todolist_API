@@ -5,6 +5,23 @@ const emailService = require('../services/emailService');
 const fs = require('fs');
 const path = require('path');
 
+// LOGS DE DÉBOGAGE POUR VERCEL CRON
+console.log('=============================================');
+console.log('EXÉCUTION DU CRON DE NOTIFICATIONS À', new Date().toISOString());
+console.log('Timezone du serveur:', Intl.DateTimeFormat().resolvedOptions().timeZone);
+console.log('Heure locale du serveur:', new Date().toLocaleTimeString());
+console.log('=============================================');
+
+// Vérifier les variables d'environnement critiques
+console.log('VARIABLES D\'ENVIRONNEMENT:');
+console.log('- SMTP_HOST:', process.env.SMTP_HOST ? 'Défini' : 'Non défini');
+console.log('- SMTP_USER:', process.env.SMTP_USER ? 'Défini' : 'Non défini');
+console.log('- SMTP_PASS:', process.env.SMTP_PASS ? 'Défini (longueur: ' + process.env.SMTP_PASS.length + ')' : 'Non défini');
+console.log('- EMAIL_FROM:', process.env.EMAIL_FROM || 'Non défini');
+console.log('- POSTGRES_URL:', process.env.POSTGRES_URL ? 'Défini' : 'Non défini');
+console.log('- DATABASE_URL:', process.env.DATABASE_URL ? 'Défini' : 'Non défini');
+console.log('=============================================');
+
 /**
  * Chemin du fichier de persistance des notifications envoyées
  */

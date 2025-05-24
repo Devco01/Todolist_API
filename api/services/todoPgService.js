@@ -1,6 +1,8 @@
 const { connectPostgres, getSequelize } = require('../config/postgres');
 const { getTodoModel, syncTodoModel } = require('../models/TodoPg');
 const { Op } = require('sequelize');
+const fs = require('fs');
+const path = require('path');
 
 // Variable pour garder une trace des todos en mémoire 
 // (utilisé comme fallback si la connexion à la base de données échoue)
@@ -52,6 +54,40 @@ const init = async () => {
             );
           `);
           console.log('[TODOPG] Table Todo créée manuellement avec succès');
+          
+          // MIGRATION FORCÉE: Récupérer les todos depuis le fichier local et les insérer dans la base de données
+          try {
+            const todosFilePath = path.join(__dirname, '../../todos-data.json');
+            if (fs.existsSync(todosFilePath)) {
+              const todosData = JSON.parse(fs.readFileSync(todosFilePath, 'utf8'));
+              if (todosData && todosData.todos && Array.isArray(todosData.todos) && todosData.todos.length > 0) {
+                console.log(`[TODOPG] MIGRATION: ${todosData.todos.length} tâches trouvées dans le fichier local`);
+                
+                // Récupérer le modèle Todo
+                const TodoModel = getTodoModel();
+                if (TodoModel) {
+                  // Insérer chaque todo dans la base de données
+                  for (const todo of todosData.todos) {
+                    try {
+                      await TodoModel.create({
+                        ...todo,
+                        // S'assurer que ces champs sont définis correctement
+                        dueDate: todo.dueDate || null,
+                        completed: todo.completed || false,
+                        notificationsEnabled: todo.notificationsEnabled || false,
+                      });
+                      console.log(`[TODOPG] MIGRATION: Tâche "${todo.title}" insérée avec succès`);
+                    } catch (insertError) {
+                      console.error(`[TODOPG] MIGRATION: Erreur lors de l'insertion de la tâche "${todo.title}":`, insertError);
+                    }
+                  }
+                  console.log('[TODOPG] MIGRATION: Fin de la migration des tâches locales');
+                }
+              }
+            }
+          } catch (migrationError) {
+            console.error('[TODOPG] MIGRATION: Erreur lors de la migration des tâches locales:', migrationError);
+          }
         } catch (sqlError) {
           console.error('[TODOPG] Erreur lors de la création manuelle de la table Todo:', sqlError);
           
