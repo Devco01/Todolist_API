@@ -59,14 +59,35 @@ const saveTodosToStorage = (todos) => {
       return false
     }
     
-    // PROTECTION ANTI-EFFACEMENT: Vérifier si on tente de sauvegarder un tableau vide 
-    // alors que des données existent déjà dans le localStorage
+    // PROTECTION ANTI-EFFACEMENT MODIFIÉE: 
+    // Vérifier si on tente de sauvegarder un tableau vide alors que des données existent déjà
     if (todos.length === 0) {
       const existingData = localStorage.getItem(STORAGE_KEY);
       if (existingData && existingData.length > 2 && existingData !== '[]') {
         try {
           const existingTodos = JSON.parse(existingData);
-          if (Array.isArray(existingTodos) && existingTodos.length > 0) {
+          
+          // Récupérer l'utilisateur actuel
+          const currentUser = JSON.parse(localStorage.getItem('user'));
+          const currentUserId = currentUser?.id;
+          
+          // Si les todos existants appartiennent à un autre utilisateur, permettre l'écrasement
+          if (currentUserId && Array.isArray(existingTodos) && existingTodos.length > 0) {
+            // Vérifier si au moins une tâche appartient à un autre utilisateur
+            const hasForeignTodos = existingTodos.some(todo => 
+              todo.userId && todo.userId !== currentUserId
+            );
+            
+            if (hasForeignTodos) {
+              console.log('[DEBUG] Changement d\'utilisateur détecté - Autorisation d\'effacer les anciennes tâches');
+              // On permet l'écrasement car ce sont des tâches d'un autre utilisateur
+              return true;
+            } else {
+              console.warn('[DEBUG] PROTECTION ANTI-EFFACEMENT: Tentative d\'écraser des données existantes avec un tableau vide! Opération annulée.');
+              console.log('[DEBUG] Données existantes préservées:', existingData.substring(0, 100) + '...');
+              return false; // Ne pas sauvegarder un tableau vide par dessus des données existantes
+            }
+          } else if (Array.isArray(existingTodos) && existingTodos.length > 0) {
             console.warn('[DEBUG] PROTECTION ANTI-EFFACEMENT: Tentative d\'écraser des données existantes avec un tableau vide! Opération annulée.');
             console.log('[DEBUG] Données existantes préservées:', existingData.substring(0, 100) + '...');
             return false; // Ne pas sauvegarder un tableau vide par dessus des données existantes
@@ -249,11 +270,18 @@ const loadTodosFromStorage = () => {
         if (currentUserId) {
           console.log(`[DEBUG] Filtrage des todos pour l'utilisateur actuel: ${currentUserId}`);
           const filteredTodos = parsedTodos.filter(todo => {
-            // Garder les tâches de l'utilisateur actuel ou celles sans userId (compatibilité)
-            return !todo.userId || todo.userId === currentUserId;
+            // Garder UNIQUEMENT les tâches de l'utilisateur actuel
+            return todo.userId === currentUserId;
           });
           
           console.log(`[DEBUG] Après filtrage: ${filteredTodos.length}/${parsedTodos.length} todos correspondent à l'utilisateur actuel`);
+          
+          // Si des tâches ont été filtrées, mettre à jour le localStorage pour ne garder que les tâches de l'utilisateur actuel
+          if (filteredTodos.length < parsedTodos.length) {
+            console.log('[DEBUG] Nettoyage du localStorage pour ne garder que les tâches de l\'utilisateur actuel');
+            saveTodosToStorage(filteredTodos);
+          }
+          
           return filteredTodos;
         }
         
@@ -387,6 +415,19 @@ export default createStore({
       if (!Array.isArray(todos)) {
         console.error('[DEBUG] SET_TODOS: Données non valides reçues:', todos);
         todos = [];
+      }
+      
+      // AMÉLIORATION: Si l'utilisateur est connecté, filtrer pour ne garder que ses tâches
+      if (state.user && state.user.id) {
+        const userId = state.user.id;
+        const initialCount = todos.length;
+        
+        // Filtrer les tâches pour ne conserver que celles de l'utilisateur actuel
+        todos = todos.filter(todo => todo.userId === userId);
+        
+        if (todos.length < initialCount) {
+          console.log(`[DEBUG] SET_TODOS: Filtrage par utilisateur - ${todos.length}/${initialCount} tâches appartiennent à l'utilisateur ${userId}`);
+        }
       }
       
       // Sauvegarder dans le state
@@ -1294,8 +1335,22 @@ export default createStore({
         const { data } = await axios.get('/auth/me');
         
         if (data.success && data.user) {
+          // Sauvegarde de l'ancien utilisateur pour comparaison
+          const oldUser = JSON.parse(localStorage.getItem('user'));
+          const oldUserId = oldUser?.id;
+          const newUserId = data.user.id;
+          
+          // Définir l'utilisateur actuel
           commit('SET_USER', data.user);
           commit('SET_AUTHENTICATED', true);
+          
+          // Vérifier s'il y a eu changement d'utilisateur
+          if (oldUserId && oldUserId !== newUserId) {
+            console.log(`[DEBUG] Changement d'utilisateur détecté: ${oldUserId} -> ${newUserId}`);
+            // Nettoyer le localStorage des tâches de l'ancien utilisateur
+            await dispatch('cleanStorageOnLogin');
+          }
+          
           return { success: true };
         } else {
           commit('LOGOUT');
@@ -1305,6 +1360,49 @@ export default createStore({
         console.error('Erreur lors de la vérification de l\'authentification:', error);
         commit('LOGOUT');
         return { success: false };
+      }
+    },
+    
+    // Nouvelle action pour nettoyer le localStorage lors de la connexion
+    async cleanStorageOnLogin({ commit, state }) {
+      console.log('[DEBUG] Nettoyage du localStorage après changement d\'utilisateur');
+      
+      // Récupérer les tâches existantes
+      const savedTodos = localStorage.getItem(STORAGE_KEY);
+      if (!savedTodos) {
+        console.log('[DEBUG] Aucune tâche à nettoyer dans le localStorage');
+        return;
+      }
+      
+      try {
+        // Parser les tâches existantes
+        const existingTodos = JSON.parse(savedTodos);
+        if (!Array.isArray(existingTodos) || existingTodos.length === 0) {
+          console.log('[DEBUG] Aucune tâche valide à nettoyer');
+          return;
+        }
+        
+        // Filtrer pour ne garder que les tâches de l'utilisateur actuel
+        const userId = state.user?.id;
+        if (!userId) {
+          console.warn('[DEBUG] Pas d\'utilisateur connecté pour le filtrage');
+          return;
+        }
+        
+        const filteredTodos = existingTodos.filter(todo => todo.userId === userId);
+        console.log(`[DEBUG] Nettoyage: ${filteredTodos.length}/${existingTodos.length} tâches conservées`);
+        
+        // Sauvegarder les tâches filtrées (même si c'est un tableau vide)
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(filteredTodos));
+        
+        // Mettre à jour le state avec les tâches filtrées
+        commit('SET_TODOS', filteredTodos);
+        
+        // Forcer la récupération des tâches depuis le serveur
+        dispatch('fetchTodos');
+        
+      } catch (error) {
+        console.error('[DEBUG] Erreur lors du nettoyage du localStorage:', error);
       }
     }
   }

@@ -314,13 +314,59 @@ const getTodoById = async (id, userId = null) => {
 // Créer une nouvelle tâche
 const createTodo = async (todoData) => {
   try {
+    // Normaliser les données de la tâche pour éviter les erreurs de validation
+    const normalizedData = { ...todoData };
+
+    // Vérifier et normaliser la catégorie
+    if (normalizedData.category) {
+      // Liste des catégories valides dans le modèle
+      const validCategories = ['maison', 'courses', 'santé', 'travail', 'famille', 'autre'];
+      // Convertir la catégorie en minuscules et retirer les accents
+      let normalizedCategory = normalizedData.category.toLowerCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      
+      // Si la catégorie n'est pas valide, utiliser 'autre'
+      if (!validCategories.includes(normalizedCategory)) {
+        console.log(`[TODOPG] Catégorie non valide: "${normalizedData.category}" -> normalisée en "autre"`);
+        normalizedData.category = 'autre';
+      } else {
+        normalizedData.category = normalizedCategory;
+      }
+    } else {
+      normalizedData.category = 'autre';
+    }
+
+    // Vérifier et normaliser la priorité
+    if (normalizedData.priority) {
+      // Liste des priorités valides dans le modèle
+      const validPriorities = ['low', 'medium', 'high'];
+      const normalizedPriority = normalizedData.priority.toLowerCase();
+      
+      // Si la priorité n'est pas valide, utiliser 'medium'
+      if (!validPriorities.includes(normalizedPriority)) {
+        console.log(`[TODOPG] Priorité non valide: "${normalizedData.priority}" -> normalisée en "medium"`);
+        normalizedData.priority = 'medium';
+      } else {
+        normalizedData.priority = normalizedPriority;
+      }
+    } else {
+      normalizedData.priority = 'medium';
+    }
+    
+    // Vérifier la notification email
+    if (normalizedData.notificationsEnabled && (!normalizedData.notificationEmail || !normalizedData.notificationEmail.trim())) {
+      console.log(`[TODOPG] Notifications activées mais email manquant -> notifications désactivées`);
+      normalizedData.notificationsEnabled = false;
+      normalizedData.notificationEmail = null;
+    }
+
     // Vérifier si l'ID utilisateur est présent et valide
-    if (todoData.userId) {
+    if (normalizedData.userId) {
       // Vérifier le format d'UUID seulement en mode base de données
       if (process.env.USE_MEMORY_MODE !== 'true') {
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-        if (!uuidRegex.test(todoData.userId)) {
-          console.warn(`[TODOPG] Format d'ID utilisateur non valide pour création: ${todoData.userId}`);
+        if (!uuidRegex.test(normalizedData.userId)) {
+          console.warn(`[TODOPG] Format d'ID utilisateur non valide pour création: ${normalizedData.userId}`);
           
           // En mode production, considérer comme erreur
           if (process.env.NODE_ENV === 'production' && !process.env.ALLOW_INVALID_USERS) {
@@ -330,7 +376,8 @@ const createTodo = async (todoData) => {
       }
     }
     
-    console.log('[TODOPG] Création d\'une tâche pour l\'utilisateur:', todoData.userId);
+    console.log('[TODOPG] Création d\'une tâche pour l\'utilisateur:', normalizedData.userId);
+    console.log('[TODOPG] Données normalisées:', JSON.stringify(normalizedData));
     
     // Utiliser le modèle Sequelize si disponible
     if (isModelAvailable()) {
@@ -344,7 +391,7 @@ const createTodo = async (todoData) => {
       }
       
       // Créer la tâche
-      const newTodo = await TodoModel.create(todoData);
+      const newTodo = await TodoModel.create(normalizedData);
       
       // Si c'est un objet Sequelize, le convertir en objet JS simple
       const todoObject = newTodo.toJSON ? newTodo.toJSON() : newTodo;
@@ -368,7 +415,7 @@ const createTodo = async (todoData) => {
       // Créer la tâche en mémoire
       const newTodo = {
         id,
-        ...todoData,
+        ...normalizedData,
         createdAt: new Date(),
         updatedAt: new Date()
       };
