@@ -104,6 +104,47 @@ router.post('/', protect, async (req, res) => {
       }
     }
     
+    // Normaliser les données pour éviter les erreurs de validation
+    
+    // Vérifier et normaliser la catégorie
+    if (todoData.category) {
+      // Liste des catégories valides dans le modèle
+      const validCategories = ['maison', 'courses', 'santé', 'travail', 'famille', 'autre'];
+      // Convertir la catégorie en minuscules et retirer les accents
+      let normalizedCategory = todoData.category.toLowerCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      
+      // Si la catégorie n'est pas valide, utiliser 'autre'
+      if (!validCategories.includes(normalizedCategory)) {
+        console.log(`POST /todos - Catégorie non valide: "${todoData.category}" -> normalisée en "autre"`);
+        todoData.category = 'autre';
+      } else {
+        todoData.category = normalizedCategory;
+      }
+    }
+
+    // Vérifier et normaliser la priorité
+    if (todoData.priority) {
+      // Liste des priorités valides dans le modèle
+      const validPriorities = ['low', 'medium', 'high'];
+      const normalizedPriority = todoData.priority.toLowerCase();
+      
+      // Si la priorité n'est pas valide, utiliser 'medium'
+      if (!validPriorities.includes(normalizedPriority)) {
+        console.log(`POST /todos - Priorité non valide: "${todoData.priority}" -> normalisée en "medium"`);
+        todoData.priority = 'medium';
+      } else {
+        todoData.priority = normalizedPriority;
+      }
+    }
+    
+    // Vérifier les notifications et l'email
+    if (todoData.notificationsEnabled && (!todoData.notificationEmail || !todoData.notificationEmail.trim())) {
+      console.log(`POST /todos - Notifications activées mais email manquant -> notifications désactivées`);
+      todoData.notificationsEnabled = false;
+      todoData.notificationEmail = null;
+    }
+    
     // NOUVELLE PARTIE : Vérifier s'il s'agit d'une mise à jour (id présent) ou d'une création
     if (todoData.id) {
       console.log(`POST /todos - Détection d'une mise à jour pour la tâche existante ID: ${todoData.id}`);
@@ -132,6 +173,16 @@ router.post('/', protect, async (req, res) => {
           return res.status(404).json({ error: 'Tâche non trouvée ou non autorisée' });
         }
         
+        // Détection améliorée des erreurs de validation Sequelize
+        if (updateError.name === 'SequelizeValidationError' || updateError.name === 'SequelizeUniqueConstraintError') {
+          const validationErrors = updateError.errors.map(err => err.message).join(', ');
+          console.error('POST /todos - Erreur de validation Sequelize:', validationErrors);
+          return res.status(400).json({
+            error: 'Erreur de validation',
+            details: validationErrors
+          });
+        }
+        
         return res.status(500).json({ 
           error: 'Erreur lors de la mise à jour de la tâche',
           details: updateError.message
@@ -142,8 +193,21 @@ router.post('/', protect, async (req, res) => {
     // Sinon, c'est une création normale
     try {
       const newTodo = await todoPgService.createTodo(todoData);
+      console.log('POST /todos - Tâche créée avec succès:', newTodo.id);
       res.status(201).json(newTodo);
     } catch (error) {
+      console.error('POST /todos - Erreur détaillée lors de la création:', error);
+      
+      // Gestion améliorée des erreurs Sequelize
+      if (error.name === 'SequelizeValidationError' || error.name === 'SequelizeUniqueConstraintError') {
+        const validationErrors = error.errors.map(err => err.message).join(', ');
+        console.error('POST /todos - Erreur de validation Sequelize:', validationErrors);
+        return res.status(400).json({
+          error: 'Erreur de validation',
+          details: validationErrors
+        });
+      }
+      
       if (error.message && error.message.includes('foreign key constraint')) {
         console.error('Violation de la contrainte de clé étrangère - userId:', todoData.userId);
         return res.status(400).json({ 
@@ -158,8 +222,11 @@ router.post('/', protect, async (req, res) => {
     console.error('Erreur lors de la création de la tâche:', error);
     
     // Vérifier si c'est une erreur de validation
-    if (error.message && error.message.includes('Erreur de validation:')) {
-      return res.status(400).json({ error: error.message });
+    if (error.message && error.message.includes('validation')) {
+      return res.status(400).json({ 
+        error: 'Erreur de validation', 
+        details: error.message 
+      });
     }
     
     res.status(500).json({ 
