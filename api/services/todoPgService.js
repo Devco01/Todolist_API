@@ -155,10 +155,11 @@ const getAllTodosByUser = async (userId) => {
       // Log détaillé pour débogage
       console.log(`[TODOPG] Requête SQL préparée pour: userId=${userId}`);
       
-      // Utiliser une requête SQL brute pour éviter les problèmes de Sequelize
+      // MODIFICATION: Ne retourner QUE les tâches de l'utilisateur spécifique
+      // Sans inclure les tâches sans userId
       const [todosBruts] = await sequelize.query(`
         SELECT * FROM "Todo" 
-        WHERE "userId" = '${userId.replace(/'/g, "''")}' OR "userId" IS NULL
+        WHERE "userId" = '${userId.replace(/'/g, "''")}'
         ORDER BY "createdAt" DESC
       `);
       
@@ -169,10 +170,7 @@ const getAllTodosByUser = async (userId) => {
       try {
         todosSequelize = await TodoModel.findAll({
           where: {
-            [Op.or]: [
-              { userId }, // Tâches de l'utilisateur
-              { userId: null } // Tâches sans utilisateur spécifique (compatibilité)
-            ]
+            userId // Uniquement les tâches de l'utilisateur
           },
           order: [['createdAt', 'DESC']]
         });
@@ -212,15 +210,15 @@ const getAllTodosByUser = async (userId) => {
     } else {
       // Si la base de données n'est pas disponible, filtrer les todos en mémoire pour cet utilisateur
       console.log(`[TODOPG] Base de données non disponible, utilisation des ${inMemoryTodos.length} tâches en mémoire`);
-      return inMemoryTodos.filter(todo => 
-        !todo.userId || todo.userId === userId
-      );
+      
+      // MODIFICATION: Ne retourner QUE les tâches de l'utilisateur spécifique
+      return inMemoryTodos.filter(todo => todo.userId === userId);
     }
   } catch (error) {
     console.error('[TODOPG] Erreur lors de la récupération des todos par utilisateur:', error);
-    return inMemoryTodos.filter(todo => 
-      !todo.userId || todo.userId === userId
-    );
+    
+    // MODIFICATION: Ne retourner QUE les tâches de l'utilisateur spécifique
+    return inMemoryTodos.filter(todo => todo.userId === userId);
   }
 };
 
@@ -282,23 +280,30 @@ const getTodoById = async (id, userId = null) => {
   try {
     if (isModelAvailable()) {
       const TodoModel = getTodoModel();
-      const todo = await TodoModel.findByPk(id);
       
-      // Vérifier si la tâche appartient à l'utilisateur demandé
-      if (userId && todo && todo.userId && todo.userId !== userId) {
-        return null; // L'utilisateur n'a pas accès à cette tâche
+      // MODIFICATION: Si userId est fourni, n'autoriser que l'accès aux tâches de cet utilisateur
+      if (userId) {
+        // Utiliser findOne avec une condition sur l'ID et l'utilisateur
+        const todo = await TodoModel.findOne({
+          where: {
+            id: id,
+            userId: userId
+          }
+        });
+        return todo;
+      } else {
+        // Cas administrateur ou sans restriction
+        const todo = await TodoModel.findByPk(id);
+        return todo;
       }
-      
-      return todo;
     } else {
-      const todo = inMemoryTodos.find(todo => todo.id === id);
-      
-      // Vérifier si la tâche appartient à l'utilisateur demandé
-      if (userId && todo && todo.userId && todo.userId !== userId) {
-        return null; // L'utilisateur n'a pas accès à cette tâche
+      // MODIFICATION: Si userId est fourni, n'autoriser que l'accès aux tâches de cet utilisateur
+      if (userId) {
+        return inMemoryTodos.find(todo => todo.id === id && todo.userId === userId);
+      } else {
+        // Cas administrateur ou sans restriction
+        return inMemoryTodos.find(todo => todo.id === id);
       }
-      
-      return todo;
     }
   } catch (error) {
     console.error(`Erreur lors de la récupération du todo ${id}:`, error);
@@ -405,13 +410,11 @@ const updateTodo = async (id, updateData, userId = null) => {
     if (isModelAvailable()) {
       const TodoModel = getTodoModel();
       
-      // Construire la clause where
+      // Construire la clause where - MODIFICATION: uniquement les tâches de l'utilisateur
       const whereClause = { id };
       if (userId) {
-        whereClause[Op.or] = [
-          { userId },
-          { userId: null }
-        ];
+        // Ne récupérer que les tâches appartenant à cet utilisateur
+        whereClause.userId = userId;
       }
       
       // Trouver la tâche avec la condition d'utilisateur si spécifiée
@@ -432,11 +435,11 @@ const updateTodo = async (id, updateData, userId = null) => {
       
       return todo;
     } else {
-      // Mettre à jour en mémoire
+      // Mettre à jour en mémoire - MODIFICATION: uniquement les tâches de l'utilisateur
       const index = inMemoryTodos.findIndex(t => {
-        // Vérifier l'ID et l'utilisateur si nécessaire
+        // Vérifier l'ID et que la tâche appartient à l'utilisateur
         if (t.id !== id) return false;
-        if (userId && t.userId && t.userId !== userId) return false;
+        if (userId && t.userId !== userId) return false;
         return true;
       });
       
@@ -464,13 +467,11 @@ const deleteTodo = async (id, userId = null) => {
     if (isModelAvailable()) {
       const TodoModel = getTodoModel();
       
-      // Construire la clause where
+      // Construire la clause where - MODIFICATION: uniquement les tâches de l'utilisateur
       const whereClause = { id };
       if (userId) {
-        whereClause[Op.or] = [
-          { userId },
-          { userId: null }
-        ];
+        // Ne récupérer que les tâches appartenant à cet utilisateur
+        whereClause.userId = userId;
       }
       
       // Trouver la tâche avec la condition d'utilisateur si spécifiée
@@ -487,10 +488,10 @@ const deleteTodo = async (id, userId = null) => {
       
       return { success: true };
     } else {
-      // Vérifier si la tâche existe et appartient à l'utilisateur
+      // Vérifier si la tâche existe et appartient à l'utilisateur - MODIFICATION
       const todoToDelete = inMemoryTodos.find(t => {
         if (t.id !== id) return false;
-        if (userId && t.userId && t.userId !== userId) return false;
+        if (userId && t.userId !== userId) return false;
         return true;
       });
       
