@@ -48,7 +48,7 @@ const init = async () => {
               "notificationEmail" VARCHAR(255),
               "notificationsEnabled" BOOLEAN DEFAULT false,
               "notificationSent" BOOLEAN DEFAULT false,
-              "userId" UUID REFERENCES "User"(id) ON DELETE SET NULL,
+              "userId" VARCHAR(255),
               "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
               "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
             );
@@ -145,30 +145,79 @@ const isModelAvailable = () => {
 // Récupérer toutes les tâches d'un utilisateur
 const getAllTodosByUser = async (userId) => {
   try {
+    console.log(`[TODOPG] Recherche des tâches pour l'utilisateur: ${userId}`);
+    
     // Vérifier si la base de données est disponible
     if (isModelAvailable()) {
+      const sequelize = getSequelize();
       const TodoModel = getTodoModel();
-      const todos = await TodoModel.findAll({
-        where: {
-          [Op.or]: [
-            { userId }, // Tâches de l'utilisateur
-            { userId: null } // Tâches sans utilisateur spécifique (compatibilité)
-          ]
-        },
-        order: [['createdAt', 'DESC']]
+      
+      // Log détaillé pour débogage
+      console.log(`[TODOPG] Requête SQL préparée pour: userId=${userId}`);
+      
+      // Utiliser une requête SQL brute pour éviter les problèmes de Sequelize
+      const [todosBruts] = await sequelize.query(`
+        SELECT * FROM "Todo" 
+        WHERE "userId" = '${userId.replace(/'/g, "''")}' OR "userId" IS NULL
+        ORDER BY "createdAt" DESC
+      `);
+      
+      console.log(`[TODOPG] Requête SQL a trouvé ${todosBruts.length} tâches pour l'utilisateur ${userId}`);
+      
+      // Requête alternative avec Sequelize si disponible
+      let todosSequelize = [];
+      try {
+        todosSequelize = await TodoModel.findAll({
+          where: {
+            [Op.or]: [
+              { userId }, // Tâches de l'utilisateur
+              { userId: null } // Tâches sans utilisateur spécifique (compatibilité)
+            ]
+          },
+          order: [['createdAt', 'DESC']]
+        });
+        
+        console.log(`[TODOPG] Requête Sequelize a trouvé ${todosSequelize.length} tâches`);
+      } catch (seqError) {
+        console.error('[TODOPG] Erreur dans la requête Sequelize:', seqError);
+      }
+      
+      // Utiliser les résultats de la requête SQL brute
+      const userTodos = todosBruts.map(todo => {
+        // Convertir les champs booléens qui peuvent être stockés comme strings
+        const convertedTodo = {...todo};
+        if (typeof convertedTodo.completed === 'string') {
+          convertedTodo.completed = convertedTodo.completed === 'true' || convertedTodo.completed === 't';
+        }
+        if (typeof convertedTodo.notificationsEnabled === 'string') {
+          convertedTodo.notificationsEnabled = convertedTodo.notificationsEnabled === 'true' || convertedTodo.notificationsEnabled === 't';
+        }
+        if (typeof convertedTodo.notificationSent === 'string') {
+          convertedTodo.notificationSent = convertedTodo.notificationSent === 'true' || convertedTodo.notificationSent === 't';
+        }
+        
+        // Assurer la compatibilité en ajoutant _id
+        if (!convertedTodo._id && convertedTodo.id) {
+          convertedTodo._id = convertedTodo.id;
+        }
+        
+        return convertedTodo;
       });
       
       // Mise à jour des todos en mémoire pour cet utilisateur
-      const userTodos = todos.map(todo => todo.toJSON());
+      inMemoryTodos = [...userTodos];
+      
+      console.log(`[TODOPG] Renvoi de ${userTodos.length} tâches à l'utilisateur ${userId}`);
       return userTodos;
     } else {
       // Si la base de données n'est pas disponible, filtrer les todos en mémoire pour cet utilisateur
+      console.log(`[TODOPG] Base de données non disponible, utilisation des ${inMemoryTodos.length} tâches en mémoire`);
       return inMemoryTodos.filter(todo => 
         !todo.userId || todo.userId === userId
       );
     }
   } catch (error) {
-    console.error('Erreur lors de la récupération des todos par utilisateur:', error);
+    console.error('[TODOPG] Erreur lors de la récupération des todos par utilisateur:', error);
     return inMemoryTodos.filter(todo => 
       !todo.userId || todo.userId === userId
     );
@@ -181,18 +230,49 @@ const getAllTodos = async () => {
     // Vérifier si la base de données est disponible
     if (isModelAvailable()) {
       const TodoModel = getTodoModel();
-      const todos = await TodoModel.findAll({
-        order: [['createdAt', 'DESC']]
+      const sequelize = getSequelize();
+      
+      // Utiliser une requête SQL brute pour éviter les problèmes
+      const [todosBruts] = await sequelize.query(`
+        SELECT * FROM "Todo" 
+        ORDER BY "createdAt" DESC
+      `);
+      
+      console.log(`[TODOPG] getAllTodos: Trouvé ${todosBruts.length} tâches via SQL brut`);
+      
+      // Convertir les résultats bruts
+      const todos = todosBruts.map(todo => {
+        // Convertir les champs booléens qui peuvent être stockés comme strings
+        const convertedTodo = {...todo};
+        if (typeof convertedTodo.completed === 'string') {
+          convertedTodo.completed = convertedTodo.completed === 'true' || convertedTodo.completed === 't';
+        }
+        if (typeof convertedTodo.notificationsEnabled === 'string') {
+          convertedTodo.notificationsEnabled = convertedTodo.notificationsEnabled === 'true' || convertedTodo.notificationsEnabled === 't';
+        }
+        if (typeof convertedTodo.notificationSent === 'string') {
+          convertedTodo.notificationSent = convertedTodo.notificationSent === 'true' || convertedTodo.notificationSent === 't';
+        }
+        
+        // Assurer la compatibilité en ajoutant _id
+        if (!convertedTodo._id && convertedTodo.id) {
+          convertedTodo._id = convertedTodo.id;
+        }
+        
+        return convertedTodo;
       });
+      
       // Mettre à jour les todos en mémoire
-      inMemoryTodos = todos.map(todo => todo.toJSON());
+      inMemoryTodos = todos;
+      
       return todos;
     } else {
       // Si la base de données n'est pas disponible, retourner les todos en mémoire
+      console.log(`[TODOPG] getAllTodos: Base de données non disponible, utilisation des ${inMemoryTodos.length} tâches en mémoire`);
       return inMemoryTodos;
     }
   } catch (error) {
-    console.error('Erreur lors de la récupération des todos:', error);
+    console.error('[TODOPG] Erreur lors de la récupération des todos:', error);
     return inMemoryTodos;
   }
 };

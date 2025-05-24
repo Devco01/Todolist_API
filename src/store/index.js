@@ -674,41 +674,120 @@ export default createStore({
         
         console.log(`[DEBUG] ${data.length} todos récupérés depuis le serveur`);
         
-        // CORRECTION CRITIQUE: Toujours privilégier les données locales si le serveur renvoie un tableau vide
-        // et que des tâches existent localement
+        // Stratégie de synchronisation intelligente
         if (data.length === 0 && hasExistingTodos) {
-          console.warn('[DEBUG] Le serveur a renvoyé un tableau vide alors que des tâches existent localement! Conservation des tâches locales.');
+          // Cas 1: Le serveur n'a pas de tâches mais le client en a
+          console.warn('[DEBUG] Le serveur a renvoyé un tableau vide alors que des tâches existent localement');
           
-          // Sauvegarder les tâches existantes dans le localStorage pour s'assurer qu'elles sont bien persistées
-          const saveSuccess = saveTodosToStorage(existingTodos);
-          console.log('[DEBUG] Sauvegarde forcée des tâches existantes:', saveSuccess ? 'Réussie' : 'Échouée');
+          // Vérifier si l'utilisateur est nouveau sur ce dispositif (synchroniser du local vers serveur)
+          if (state.isAuthenticated && isFirstLoad) {
+            console.log('[DEBUG] Nouvel appareil détecté, tentative de synchronisation des tâches locales vers le serveur...');
+            
+            // Sauvegarder d'abord dans localStorage pour sécurité
+            saveTodosToStorage(existingTodos);
+            
+            // Synchroniser une par une les tâches locales vers le serveur
+            let syncSuccessCount = 0;
+            for (const todo of existingTodos) {
+              try {
+                const todoId = todo.id || todo._id;
+                // Si la tâche a un ID, faire une mise à jour, sinon créer une nouvelle tâche
+                if (todoId) {
+                  await axios.put(`/todos/${todoId}`, todo);
+                } else {
+                  await axios.post('/todos', todo);
+                }
+                syncSuccessCount++;
+              } catch (syncError) {
+                console.error(`[DEBUG] Erreur lors de la synchronisation de la tâche "${todo.title}":`, syncError);
+              }
+            }
+            
+            console.log(`[DEBUG] Synchronisation terminée: ${syncSuccessCount}/${existingTodos.length} tâches synchronisées`);
+            
+            // Recharger les tâches depuis le serveur pour confirmer la synchronisation
+            try {
+              const { data: refreshedData } = await axios.get('/todos');
+              if (refreshedData && Array.isArray(refreshedData) && refreshedData.length > 0) {
+                console.log(`[DEBUG] Après synchronisation: ${refreshedData.length} tâches sur le serveur`);
+                commit('SET_TODOS', refreshedData);
+                commit('SET_OFFLINE_MODE', false);
+                
+                commit('SET_NOTIFICATION_STATUS', {
+                  success: true,
+                  message: `${syncSuccessCount} tâches synchronisées avec le serveur`
+                });
+                
+                return { success: true, data: refreshedData };
+              }
+            } catch (refreshError) {
+              console.error('[DEBUG] Erreur lors du rechargement après synchronisation:', refreshError);
+            }
+          }
           
-          // IMPORTANT: Ne pas commiter SET_TODOS qui écraserait les données
-          // On conserve explicitement l'état actuel
+          // Conserver les tâches locales si la synchronisation échoue ou n'est pas nécessaire
+          console.log('[DEBUG] Conservation des tâches locales (le serveur n\'a pas de tâches)');
           
           commit('SET_NOTIFICATION_STATUS', {
             success: true,
-            message: 'Conservation des données locales (le serveur a renvoyé 0 tâches)'
+            message: 'Conservation des données locales'
           });
           
-          commit('SET_LOADING', false);
-          return { success: true, data: existingTodos, offline: true, preserved: true };
-        }
-        
-        // Si le serveur renvoie des données, les utiliser
-        if (data.length > 0) {
+          return { success: true, data: existingTodos, preserved: true };
+        } else if (data.length > 0) {
+          // Cas 2: Le serveur a des tâches - les utiliser
+          console.log(`[DEBUG] Utilisation des ${data.length} tâches du serveur`);
+          
+          // AMÉLIORATION: Fusionner les tâches locales et du serveur pour éviter la perte de données
+          if (hasExistingTodos && isFirstLoad) {
+            // Identifier les tâches qui existent localement mais pas sur le serveur
+            const serverTodoIds = data.map(todo => todo.id || todo._id);
+            const localOnlyTodos = existingTodos.filter(todo => {
+              const todoId = todo.id || todo._id;
+              return todoId && !serverTodoIds.includes(todoId);
+            });
+            
+            if (localOnlyTodos.length > 0) {
+              console.log(`[DEBUG] ${localOnlyTodos.length} tâches existent uniquement en local, tentative de synchronisation...`);
+              
+              // Synchroniser les tâches locales manquantes vers le serveur
+              let syncCount = 0;
+              for (const todo of localOnlyTodos) {
+                try {
+                  const { data: newTodo } = await axios.post('/todos', todo);
+                  if (newTodo && newTodo.id) {
+                    syncCount++;
+                    // Ajouter la tâche nouvellement créée aux données du serveur
+                    data.push(newTodo);
+                  }
+                } catch (syncError) {
+                  console.error(`[DEBUG] Erreur lors de la synchronisation de la tâche locale "${todo.title}":`, syncError);
+                }
+              }
+              
+              console.log(`[DEBUG] ${syncCount}/${localOnlyTodos.length} tâches locales synchronisées avec le serveur`);
+              
+              if (syncCount > 0) {
+                commit('SET_NOTIFICATION_STATUS', {
+                  success: true,
+                  message: `${syncCount} tâches locales ajoutées au serveur`
+                });
+              }
+            }
+          }
+          
+          // Mettre à jour le store avec les données fusionnées
           commit('SET_TODOS', data);
           commit('SET_OFFLINE_MODE', false);
           
-          // Afficher un message de confirmation temporaire seulement si ce n'est pas le premier chargement
           if (!isFirstLoad) {
             commit('SET_NOTIFICATION_STATUS', {
               success: true,
               message: 'Synchronisation réussie avec le serveur'
             });
           }
-        } else if (data.length === 0 && existingTodos.length === 0) {
-          // Les deux sont vides, mettre à jour normalement
+        } else if (data.length === 0 && !hasExistingTodos) {
+          // Cas 3: Ni le serveur ni le client n'ont de tâches
           commit('SET_TODOS', []);
           commit('SET_OFFLINE_MODE', false);
         }

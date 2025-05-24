@@ -123,6 +123,20 @@ const recordNotificationSent = (todoId) => {
 };
 
 /**
+ * Vérifie si une date est aujourd'hui
+ * @param {string} dateStr - Date au format YYYY-MM-DD
+ * @returns {boolean} - True si la date est aujourd'hui
+ */
+const isToday = (dateStr) => {
+  if (!dateStr) return false;
+  
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  
+  return dateStr === todayStr;
+};
+
+/**
  * Route cron pour vérifier les notifications et les envoyer
  * Cette route est appelée par Vercel Cron
  */
@@ -211,16 +225,32 @@ module.exports = async (req, res) => {
     
     console.log(`[CRON-PG] ${todos.length} tâches trouvées avec notifications activées`);
     
+    // Obtenir la date d'aujourd'hui au format YYYY-MM-DD
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    console.log(`[CRON-PG] Date d'aujourd'hui: ${todayStr}`);
+    
+    // Filtrer les tâches pour ne garder que celles d'aujourd'hui
+    const todosForToday = todos.filter(todo => {
+      const isTodayTask = todo.dueDate === todayStr;
+      console.log(`[CRON-PG] Tâche "${todo.title}" (${todo.dueDate}) - Est pour aujourd'hui: ${isTodayTask ? 'Oui' : 'Non'}`);
+      return isTodayTask;
+    });
+    
+    console.log(`[CRON-PG] ${todosForToday.length} tâches pour aujourd'hui (${todayStr})`);
+    
+    // Si aucune tâche pour aujourd'hui
+    if (todosForToday.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: 'Aucune tâche pour aujourd\'hui, pas de notification à envoyer',
+        timestamp: new Date().toISOString()
+      });
+    }
+    
     // Filtrer les tâches pour lesquelles une notification doit être envoyée
-    const todosToNotify = todos.filter(todo => {
-      // Vérifier d'abord si la tâche justifie une notification selon ses propres critères
-      const shouldSendByTodoRules = todo.shouldNotify();
-      
-      if (!shouldSendByTodoRules) {
-        return false;
-      }
-      
-      // Vérifier ensuite le cooldown pour éviter les notifications répétées
+    const todosToNotify = todosForToday.filter(todo => {
+      // Vérifier le cooldown pour éviter les notifications répétées
       const todoId = todo.id || todo._id;
       if (hasRecentNotification(todoId)) {
         console.log(`[CRON-PG] Cooldown actif pour la tâche ${todoId}, notification ignorée`);
@@ -230,13 +260,13 @@ module.exports = async (req, res) => {
       return true;
     });
     
-    console.log(`[CRON-PG] ${todosToNotify.length} tâches nécessitent une notification`);
+    console.log(`[CRON-PG] ${todosToNotify.length} tâches d'aujourd'hui nécessitent une notification`);
     
     // Si aucune tâche à notifier
     if (todosToNotify.length === 0) {
       return res.status(200).json({
         success: true,
-        message: 'Aucune notification à envoyer',
+        message: 'Aucune notification à envoyer pour les tâches d\'aujourd\'hui',
         timestamp: new Date().toISOString()
       });
     }
@@ -250,23 +280,24 @@ module.exports = async (req, res) => {
         // Construire le contenu de l'email
         const emailData = {
           to: todo.notificationEmail,
-          subject: `Rappel: "${todo.title}" - Tâche à effectuer aujourd'hui`,
+          subject: `Rappel: "${todo.title}" - Tâche à effectuer AUJOURD'HUI`,
           text: `
             Bonjour,
             
-            Rappel pour votre tâche "${todo.title}" qui doit être effectuée aujourd'hui.
+            Rappel pour votre tâche "${todo.title}" qui doit être effectuée AUJOURD'HUI.
             
             Description: ${todo.description || 'Aucune description'}
             Catégorie: ${todo.category || 'Non spécifiée'}
             Priorité: ${todo.priority || 'Moyenne'}
+            Heure: ${todo.dueTime || 'Non spécifiée'}
             
             Cordialement,
             Votre application TodoList
           `.replace(/            /g, '').trim(),
           html: `
-            <h2>Rappel : Tâche à effectuer aujourd'hui</h2>
+            <h2>Rappel : Tâche à effectuer AUJOURD'HUI</h2>
             <h3>${todo.title}</h3>
-            <p>Date d'échéance : <strong>${todo.dueDate}</strong> à <strong>${todo.dueTime || '00:00'}</strong></p>
+            <p>Date d'échéance : <strong>AUJOURD'HUI</strong> à <strong>${todo.dueTime || '00:00'}</strong></p>
             
             <h4>Détails :</h4>
             <p><strong>Description :</strong> ${todo.description || 'Aucune description'}</p>
@@ -309,7 +340,7 @@ module.exports = async (req, res) => {
     
     return res.status(200).json({
       success: true,
-      message: `${results.filter(r => r.success).length}/${todosToNotify.length} notifications envoyées`,
+      message: `${results.filter(r => r.success).length}/${todosToNotify.length} notifications envoyées pour les tâches d'aujourd'hui`,
       results,
       timestamp: new Date().toISOString()
     });

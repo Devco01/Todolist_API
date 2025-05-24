@@ -68,6 +68,9 @@ export default {
         this.$store.commit('SET_USER', data.user);
         this.$store.commit('SET_AUTHENTICATED', true);
         
+        // Déclencher la synchronisation des tâches après la connexion
+        this.synchronizeTodos();
+        
         // Rediriger vers la page d'accueil
         this.$router.push('/');
       } catch (error) {
@@ -75,6 +78,24 @@ export default {
         console.error('Erreur de connexion:', error);
       } finally {
         this.loading = false;
+      }
+    },
+    
+    // Nouvelle méthode pour synchroniser les tâches après connexion
+    async synchronizeTodos() {
+      console.log('[SYNC] Synchronisation des tâches après connexion...');
+      
+      try {
+        // Récupérer les tâches du serveur et les fusionner avec les tâches locales
+        const result = await this.$store.dispatch('fetchTodos');
+        
+        if (result.success) {
+          console.log(`[SYNC] Synchronisation réussie, ${result.data?.length || 0} tâches disponibles`);
+        } else {
+          console.error('[SYNC] Échec de la synchronisation des tâches:', result.error);
+        }
+      } catch (error) {
+        console.error('[SYNC] Erreur lors de la synchronisation des tâches:', error);
       }
     }
   }
@@ -158,11 +179,10 @@ a {
 }
 
 .error-message {
-  background-color: #f8d7da;
-  color: #721c24;
+  background-color: #ffebee;
+  color: #c62828;
   padding: 0.75rem;
-  margin-bottom: 1rem;
   border-radius: 4px;
-  text-align: center;
+  margin-bottom: 1rem;
 }
 </style> 
