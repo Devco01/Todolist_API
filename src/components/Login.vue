@@ -86,13 +86,28 @@ export default {
       console.log('[SYNC] Synchronisation des tâches après connexion...');
       
       try {
-        // Récupérer les tâches du serveur et les fusionner avec les tâches locales
+        // Étape 1: D'abord forcer la synchronisation des tâches locales vers le serveur
+        await this.$store.dispatch('forceSyncToServer');
+        
+        // Étape 2: Récupérer les tâches du serveur après la synchronisation
         const result = await this.$store.dispatch('fetchTodos');
         
         if (result.success) {
-          console.log(`[SYNC] Synchronisation réussie, ${result.data?.length || 0} tâches disponibles`);
+          console.log(`[SYNC] Synchronisation automatique réussie, ${result.data?.length || 0} tâches disponibles`);
+          
+          // Notification de succès
+          this.$store.commit('SET_NOTIFICATION_STATUS', {
+            success: true,
+            message: 'Vos tâches ont été synchronisées avec succès'
+          });
         } else {
           console.error('[SYNC] Échec de la synchronisation des tâches:', result.error);
+          
+          // Notification d'échec discrète
+          this.$store.commit('SET_NOTIFICATION_STATUS', {
+            success: false,
+            message: 'Impossible de synchroniser certaines tâches'
+          });
         }
       } catch (error) {
         console.error('[SYNC] Erreur lors de la synchronisation des tâches:', error);

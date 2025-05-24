@@ -720,49 +720,19 @@ export default createStore({
           // Cas 1: Le serveur n'a pas de tâches mais le client en a
           console.warn('[DEBUG] Le serveur a renvoyé un tableau vide alors que des tâches existent localement');
           
-          // Vérifier si l'utilisateur est nouveau sur ce dispositif (synchroniser du local vers serveur)
-          if (state.isAuthenticated && isFirstLoad) {
-            console.log('[DEBUG] Nouvel appareil détecté, tentative de synchronisation des tâches locales vers le serveur...');
+          // AMÉLIORÉ: Tenter de synchroniser les tâches locales vers le serveur
+          // si l'utilisateur est authentifié
+          if (state.isAuthenticated) {
+            console.log('[DEBUG] Tentative de synchronisation des tâches locales vers le serveur...');
             
-            // Sauvegarder d'abord dans localStorage pour sécurité
-            saveTodosToStorage(existingTodos);
-            
-            // Synchroniser une par une les tâches locales vers le serveur
-            let syncSuccessCount = 0;
-            for (const todo of existingTodos) {
-              try {
-                const todoId = todo.id || todo._id;
-                // Si la tâche a un ID, faire une mise à jour, sinon créer une nouvelle tâche
-                if (todoId) {
-                  await axios.put(`/todos/${todoId}`, todo);
-                } else {
-                  await axios.post('/todos', todo);
-                }
-                syncSuccessCount++;
-              } catch (syncError) {
-                console.error(`[DEBUG] Erreur lors de la synchronisation de la tâche "${todo.title}":`, syncError);
-              }
-            }
-            
-            console.log(`[DEBUG] Synchronisation terminée: ${syncSuccessCount}/${existingTodos.length} tâches synchronisées`);
-            
-            // Recharger les tâches depuis le serveur pour confirmer la synchronisation
+            // On tente de synchroniser via la nouvelle action forceSyncToServer
             try {
-              const { data: refreshedData } = await axios.get('/todos');
-              if (refreshedData && Array.isArray(refreshedData) && refreshedData.length > 0) {
-                console.log(`[DEBUG] Après synchronisation: ${refreshedData.length} tâches sur le serveur`);
-                commit('SET_TODOS', refreshedData);
-                commit('SET_OFFLINE_MODE', false);
-                
-                commit('SET_NOTIFICATION_STATUS', {
-                  success: true,
-                  message: `${syncSuccessCount} tâches synchronisées avec le serveur`
-                });
-                
-                return { success: true, data: refreshedData };
+              const syncResult = await dispatch('forceSyncToServer', existingTodos);
+              if (syncResult.success) {
+                return syncResult;
               }
-            } catch (refreshError) {
-              console.error('[DEBUG] Erreur lors du rechargement après synchronisation:', refreshError);
+            } catch (syncError) {
+              console.error('[DEBUG] Erreur lors de la synchronisation forcée:', syncError);
             }
           }
           
@@ -1351,6 +1321,15 @@ export default createStore({
             await dispatch('cleanStorageOnLogin');
           }
           
+          // AMÉLIORATION: Synchroniser automatiquement les tâches au chargement
+          try {
+            console.log('[SYNC] Synchronisation automatique des tâches au chargement...');
+            await dispatch('forceSyncToServer');
+            console.log('[SYNC] Synchronisation automatique terminée');
+          } catch (syncError) {
+            console.error('[SYNC] Erreur lors de la synchronisation automatique:', syncError);
+          }
+          
           return { success: true };
         } else {
           commit('LOGOUT');
@@ -1403,6 +1382,104 @@ export default createStore({
         
       } catch (error) {
         console.error('[DEBUG] Erreur lors du nettoyage du localStorage:', error);
+      }
+    },
+    // Nouvelle action pour forcer la synchronisation des tâches locales vers le serveur
+    async forceSyncToServer({ commit, dispatch, state }, todos = null) {
+      console.log('[DEBUG] Démarrage de la synchronisation forcée des tâches locales vers le serveur');
+      
+      // Utiliser les tâches fournies ou celles du state
+      const todosToSync = todos || state.todos;
+      
+      if (!Array.isArray(todosToSync) || todosToSync.length === 0) {
+        console.log('[DEBUG] Pas de tâches à synchroniser');
+        return { success: true, message: 'Aucune tâche à synchroniser', count: 0 };
+      }
+      
+      commit('SET_EMERGENCY_SYNC_IN_PROGRESS', true);
+      
+      try {
+        // Assurons-nous que l'utilisateur est authentifié
+        if (!state.isAuthenticated || !state.user) {
+          return { 
+            success: false, 
+            error: 'Vous devez être connecté pour synchroniser vos tâches',
+            count: 0
+          };
+        }
+        
+        // Pour chaque tâche, tenter de la synchroniser avec le serveur
+        let successCount = 0;
+        let errorCount = 0;
+        const syncedTodos = [];
+        
+        for (const todo of todosToSync) {
+          try {
+            // S'assurer que la tâche a l'ID de l'utilisateur
+            const todoWithUserId = { ...todo };
+            if (!todoWithUserId.userId) {
+              todoWithUserId.userId = state.user.id;
+              console.log(`[DEBUG] Ajout de l'ID utilisateur ${state.user.id} à la tâche "${todo.title}"`);
+            }
+            
+            // Si la tâche a un ID, faire une mise à jour
+            if (todo.id || todo._id) {
+              console.log(`[DEBUG] Mise à jour de la tâche existante "${todo.title}" (ID: ${todo.id || todo._id})`);
+              const { data } = await axios.put(`/todos/${todo.id || todo._id}`, todoWithUserId);
+              syncedTodos.push(data);
+            } else {
+              // Sinon, créer une nouvelle tâche
+              console.log(`[DEBUG] Création d'une nouvelle tâche "${todo.title}"`);
+              const { data } = await axios.post('/todos', todoWithUserId);
+              syncedTodos.push(data);
+            }
+            
+            successCount++;
+            console.log(`[DEBUG] Synchronisation réussie pour la tâche "${todo.title}"`);
+          } catch (error) {
+            console.error(`[DEBUG] Erreur lors de la synchronisation de la tâche "${todo.title}":`, error);
+            errorCount++;
+          }
+        }
+        
+        console.log(`[DEBUG] Force sauvegarde des tâches existantes: ${successCount}`);
+        
+        // Si des tâches ont été synchronisées, mettre à jour le state
+        if (syncedTodos.length > 0) {
+          commit('SET_TODOS', syncedTodos);
+          
+          // Sauvegarder dans le localStorage
+          const saveSuccess = saveTodosToStorage(syncedTodos);
+          console.log(`[DEBUG] Force sauvegarde ${saveSuccess ? 'réussie' : 'échouée'}`);
+          
+          // Vérification de la sauvegarde
+          const savedData = localStorage.getItem('todos');
+          console.log(`[DEBUG] Vérification après force sauvegarde: ${savedData ? savedData.length : 0} caractères`);
+        }
+        
+        // Afficher un message de statut
+        commit('SET_NOTIFICATION_STATUS', {
+          success: successCount > 0,
+          message: `Synchronisation: ${successCount} tâches synchronisées, ${errorCount} échouées`
+        });
+        
+        return { 
+          success: successCount > 0, 
+          data: syncedTodos,
+          message: `${successCount} tâches synchronisées, ${errorCount} échouées`,
+          count: successCount
+        };
+      } catch (error) {
+        console.error('[DEBUG] Erreur globale lors de la synchronisation forcée:', error);
+        
+        commit('SET_NOTIFICATION_STATUS', {
+          success: false,
+          message: 'Erreur lors de la synchronisation forcée'
+        });
+        
+        return { success: false, error: error.message, count: 0 };
+      } finally {
+        commit('SET_EMERGENCY_SYNC_IN_PROGRESS', false);
       }
     }
   }
