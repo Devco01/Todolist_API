@@ -80,3 +80,6 @@ NOTES.md
 # Data files
 api/store/todos.json
 .env*.local
+local-todos.json
+scripts/verify-todos.js
+scripts/migrate-todos.js
