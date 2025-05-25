@@ -269,50 +269,27 @@ export default {
 
     const submitForm = async () => {
       try {
-        console.log('Démarrage de la soumission du formulaire avec:', todo.value);
-        
-        // Validation de l'email si les notifications sont activées
-        if (todo.value.notificationsEnabled) {
-          if (!todo.value.notificationEmail || !todo.value.notificationEmail.trim()) {
-            console.error('Erreur: Email requis pour les notifications');
-            notificationMessage.value = 'Erreur: Une adresse email est requise pour les notifications';
-            showNotification.value = true;
-            setTimeout(() => {
-              showNotification.value = false;
-            }, 5000);
-            return;
-          }
-          
-          // Validation basique du format de l'email
-          if (!/\S+@\S+\.\S+/.test(todo.value.notificationEmail)) {
-            console.error('Erreur: Format d\'email invalide');
-            notificationMessage.value = 'Erreur: L\'adresse email n\'est pas valide';
-            showNotification.value = true;
-            setTimeout(() => {
-              showNotification.value = false;
-            }, 5000);
-            return;
-          }
-        } else {
-          // Si notifications désactivées, s'assurer que l'email est vide
-          todo.value.notificationEmail = '';
+        // Vérifier que le titre n'est pas vide
+        if (!todo.value.title.trim()) {
+          notificationMessage.value = 'Veuillez saisir un titre pour la tâche';
+          showNotification.value = true;
+          setTimeout(() => { showNotification.value = false; }, 3000);
+          return;
         }
         
-        // Toujours envoyer la date au format ISO (YYYY-MM-DD) au backend
-        const storageDate = formatDateForStorage(todo.value.dueDate);
-        
-        // Vérifier que la date est valide
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(storageDate)) {
-          console.warn('Format de date non valide, conversion automatique:', todo.value.dueDate, '→', storageDate);
+        // Construire l'heure si définie
+        if (hours.value || minutes.value) {
+          todo.value.dueTime = `${hours.value || '00'}:${minutes.value || '00'}`;
         }
         
-        // Combiner heures et minutes
-        const todoData = { 
-          ...todo.value,
-          dueDate: storageDate, // Envoyer la date au format YYYY-MM-DD
-          dueTime: `${hours.value}:${minutes.value}`
-        };
+        // Cloner l'objet todo pour éviter de modifier le formulaire directement
+        const todoData = { ...todo.value };
         
+        // IMPORTANT: Supprimer l'ID s'il existe pour éviter les erreurs de validation
+        if (todoData.id) delete todoData.id;
+        if (todoData._id) delete todoData._id;
+        
+        // Assurez-vous que les objets imbriqués sont également clonés
         console.log('Envoi de la tâche avec date formatée pour API:', todoData);
         
         const result = await store.dispatch('createTodo', todoData);

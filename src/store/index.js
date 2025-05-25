@@ -765,7 +765,12 @@ export default createStore({
               let syncCount = 0;
               for (const todo of localOnlyTodos) {
                 try {
-                  const { data: newTodo } = await axios.post('/todos', todo);
+                  // IMPORTANT: Supprimer les IDs pour éviter les erreurs "id must be unique"
+                  const todoToSync = { ...todo };
+                  if (todoToSync.id) delete todoToSync.id;
+                  if (todoToSync._id) delete todoToSync._id;
+                  
+                  const { data: newTodo } = await axios.post('/todos', todoToSync);
                   if (newTodo && newTodo.id) {
                     syncCount++;
                     // Ajouter la tâche nouvellement créée aux données du serveur
@@ -896,7 +901,13 @@ export default createStore({
           }
         }
 
-        const { data } = await axios.post('/todos', todo);
+        // NOUVEAU: Supprimer les IDs pour éviter les erreurs "id must be unique"
+        const todoToSend = { ...todo };
+        if (todoToSend.id) delete todoToSend.id;
+        if (todoToSend._id) delete todoToSend._id;
+        console.log('[DEBUG] Tâche préparée pour création (sans ID):', todoToSend);
+
+        const { data } = await axios.post('/todos', todoToSend);
         console.log('Réponse API pour createTodo:', data);
         
         // Vérifier si l'ID est présent (compatibilité MongoDB/PostgreSQL)
@@ -1430,7 +1441,12 @@ export default createStore({
             } else {
               // Sinon, créer une nouvelle tâche
               console.log(`[DEBUG] Création d'une nouvelle tâche "${todo.title}"`);
-              const { data } = await axios.post('/todos', todoWithUserId);
+              // Supprimer tout ID potentiellement présent pour éviter les erreurs "id must be unique"
+              const todoToCreate = { ...todoWithUserId };
+              if (todoToCreate.id) delete todoToCreate.id;
+              if (todoToCreate._id) delete todoToCreate._id;
+              
+              const { data } = await axios.post('/todos', todoToCreate);
               syncedTodos.push(data);
             }
             
