@@ -901,31 +901,48 @@ export default createStore({
           }
         }
 
-        // NOUVEAU: Supprimer les IDs pour éviter les erreurs "id must be unique"
+        // TOUJOURS supprimer les IDs pour créer une nouvelle tâche plutôt que mettre à jour
         const todoToSend = { ...todo };
-        if (todoToSend.id) delete todoToSend.id;
-        if (todoToSend._id) delete todoToSend._id;
+        if (todoToSend.id) {
+          console.log(`[DEBUG] Suppression de l'ID ${todoToSend.id} pour créer une nouvelle tâche`);
+          delete todoToSend.id;
+        }
+        if (todoToSend._id) {
+          console.log(`[DEBUG] Suppression de l'ID Mongo ${todoToSend._id} pour créer une nouvelle tâche`);
+          delete todoToSend._id;
+        }
         console.log('[DEBUG] Tâche préparée pour création (sans ID):', todoToSend);
 
-        const { data } = await axios.post('/todos', todoToSend);
-        console.log('Réponse API pour createTodo:', data);
-        
-        // Vérifier si l'ID est présent (compatibilité MongoDB/PostgreSQL)
-        if (data && (data._id || data.id)) {
-          // Si l'objet a seulement id mais pas _id, ajouter _id pour la compatibilité frontend
-          if (data.id && !data._id) {
-            data._id = data.id;
+        // Tenter de créer la tâche sur le serveur
+        try {
+          const { data } = await axios.post('/todos', todoToSend);
+          console.log('Réponse API pour createTodo:', data);
+          
+          // Vérifier si l'ID est présent (compatibilité MongoDB/PostgreSQL)
+          if (data && (data._id || data.id)) {
+            // Si l'objet a seulement id mais pas _id, ajouter _id pour la compatibilité frontend
+            if (data.id && !data._id) {
+              data._id = data.id;
+            }
+            commit('ADD_TODO', data);
+            commit('SET_OFFLINE_MODE', false);
+            commit('SET_LOADING', false);
+            return { success: true, data };
+          } else {
+            const errorMessage = 'Réponse invalide du serveur: ID de tâche manquant';
+            console.error(errorMessage, data);
+            throw new Error(errorMessage);
           }
-          commit('ADD_TODO', data);
-          commit('SET_OFFLINE_MODE', false);
-          commit('SET_LOADING', false);
-          return { success: true, data };
-        } else {
-          const errorMessage = 'Réponse invalide du serveur: ID de tâche manquant';
-          console.error(errorMessage, data);
-          commit('SET_ERROR', errorMessage);
-          commit('SET_LOADING', false);
-          return { success: false, error: errorMessage };
+        } catch (serverError) {
+          console.error('[DEBUG] Erreur serveur lors de la création de la tâche:', serverError);
+          
+          // Si nous sommes authentifiés mais recevons une erreur, créer en mode hors ligne
+          if (state.isAuthenticated) {
+            console.log('[DEBUG] Tentative de création en mode hors ligne malgré l\'authentification');
+          }
+          
+          // Créer en mode hors ligne
+          throw serverError; // Propager l'erreur au bloc catch suivant
         }
       } catch (error) {
         console.error('Erreur dans l\'action createTodo:', error);
@@ -981,30 +998,25 @@ export default createStore({
           return { success: false, error: errorMessage, needReconnect: true };
         }
         
-        // Si pas de réponse du serveur, utiliser le stockage local
-        if (!error.response) {
-          console.log('Fallback: Utilisation du stockage local');
-          commit('SET_OFFLINE_MODE', true);
-          
-          // CORRECTIF: Ajouter l'ID utilisateur en mode hors ligne également
-          const newTodo = {
-            ...todo,
-            _id: Math.random().toString(36).substring(2, 15),
-            createdAt: new Date().toISOString()
-          };
-          
-          // S'assurer que l'ID utilisateur est présent en mode hors ligne aussi
-          if (state.isAuthenticated && state.user && !newTodo.userId) {
-            newTodo.userId = state.user.id;
-          }
-          
-          commit('ADD_TODO', newTodo);
-          commit('SET_LOADING', false);
-          return { success: true, data: newTodo, offline: true };
+        // Si pas de réponse du serveur ou autre erreur, utiliser le stockage local
+        console.log('[DEBUG] Création de la tâche en mode hors ligne');
+        commit('SET_OFFLINE_MODE', true);
+        
+        // CORRECTIF: Ajouter l'ID utilisateur en mode hors ligne également
+        const newTodo = {
+          ...todo,
+          _id: Math.random().toString(36).substring(2, 15),
+          createdAt: new Date().toISOString()
+        };
+        
+        // S'assurer que l'ID utilisateur est présent en mode hors ligne aussi
+        if (state.isAuthenticated && state.user && !newTodo.userId) {
+          newTodo.userId = state.user.id;
         }
         
+        commit('ADD_TODO', newTodo);
         commit('SET_LOADING', false);
-        return { success: false, error: errorMessage };
+        return { success: true, data: newTodo, offline: true };
       }
     },
     async updateTodo({ commit, state }, todo) {
@@ -1051,34 +1063,75 @@ export default createStore({
         const todoId = todo._id || todo.id;
         console.log(`[DEBUG] Action updateTodo: Envoi de la mise à jour au serveur pour l'ID ${todoId}`);
         
-        const { data } = await axios.put(`/todos/${todoId}`, todo);
-        console.log('[DEBUG] Action updateTodo: Réponse du serveur:', data);
-        
-        // Si l'objet a seulement id mais pas _id, ajouter _id pour la compatibilité frontend
-        if (data.id && !data._id) {
-          data._id = data.id;
-        }
-        
-        // CORRECTIF CRITIQUE: Mettre à jour immédiatement sans attendre
-        commit('UPDATE_TODO', data);
-        commit('SET_OFFLINE_MODE', false);
-        
-        // Vérification post-mise à jour
-        window.setTimeout(() => {
-          const updatedTodoExists = state.todos.some(t => 
-            (t._id && t._id === todoId) || (t.id && t.id === todoId)
-          );
+        try {
+          // Tenter de mettre à jour la tâche existante
+          const { data } = await axios.put(`/todos/${todoId}`, todo);
+          console.log('[DEBUG] Action updateTodo: Réponse du serveur (mise à jour):', data);
           
-          if (!updatedTodoExists) {
-            console.error(`[DEBUG] Action updateTodo: La tâche mise à jour ${todoId} a disparu après la mise à jour!`);
-            console.log('[DEBUG] Action updateTodo: Réapplication forcée de la mise à jour');
-            commit('UPDATE_TODO', data);
-          } else {
-            console.log(`[DEBUG] Action updateTodo: Mise à jour confirmée pour la tâche ${todoId}`);
+          // Si l'objet a seulement id mais pas _id, ajouter _id pour la compatibilité frontend
+          if (data.id && !data._id) {
+            data._id = data.id;
           }
-        }, 100);
-        
-        return { success: true, data };
+          
+          // CORRECTIF CRITIQUE: Mettre à jour immédiatement sans attendre
+          commit('UPDATE_TODO', data);
+          commit('SET_OFFLINE_MODE', false);
+          
+          // Vérification post-mise à jour
+          window.setTimeout(() => {
+            const updatedTodoExists = state.todos.some(t => 
+              (t._id && t._id === todoId) || (t.id && t.id === todoId)
+            );
+            
+            if (!updatedTodoExists) {
+              console.error(`[DEBUG] Action updateTodo: La tâche mise à jour ${todoId} a disparu après la mise à jour!`);
+              console.log('[DEBUG] Action updateTodo: Réapplication forcée de la mise à jour');
+              commit('UPDATE_TODO', data);
+            } else {
+              console.log(`[DEBUG] Action updateTodo: Mise à jour confirmée pour la tâche ${todoId}`);
+            }
+          }, 100);
+          
+          return { success: true, data };
+        } catch (updateError) {
+          // Si l'erreur est 404 (tâche non trouvée), tenter de créer une nouvelle tâche
+          if (updateError.response && updateError.response.status === 404) {
+            console.log(`[DEBUG] Action updateTodo: Tâche ${todoId} non trouvée sur le serveur, tentative de création`);
+            
+            // Préparer la tâche pour création (sans ID)
+            const todoToCreate = { ...todo };
+            if (todoToCreate.id) delete todoToCreate.id;
+            if (todoToCreate._id) delete todoToCreate._id;
+            
+            // Assurer que l'ID utilisateur est présent
+            if (state.isAuthenticated && state.user && !todoToCreate.userId) {
+              todoToCreate.userId = state.user.id;
+            }
+            
+            try {
+              // Créer une nouvelle tâche
+              const { data } = await axios.post('/todos', todoToCreate);
+              console.log('[DEBUG] Action updateTodo: Tâche créée avec succès:', data);
+              
+              // Si l'objet a seulement id mais pas _id, ajouter _id pour la compatibilité frontend
+              if (data.id && !data._id) {
+                data._id = data.id;
+              }
+              
+              // Mettre à jour le state avec la nouvelle tâche
+              commit('ADD_TODO', data);
+              commit('SET_OFFLINE_MODE', false);
+              
+              return { success: true, data, created: true };
+            } catch (createError) {
+              console.error('[DEBUG] Action updateTodo: Échec de la création après 404:', createError);
+              throw createError; // Propager l'erreur
+            }
+          } else {
+            // Pour les autres erreurs, les propager
+            throw updateError;
+          }
+        }
       } catch (error) {
         console.error('[DEBUG] Action updateTodo: Erreur lors de la mise à jour:', error);
         
@@ -1168,7 +1221,31 @@ export default createStore({
           commit('SET_OFFLINE_MODE', false);
         } catch (serverError) {
           console.error(`[DEBUG] Erreur serveur lors de la suppression: ${serverError}`);
-          // La tâche a déjà été supprimée localement, donc pas besoin de rollback
+          
+          // Si l'erreur est 404 (tâche non trouvée), ce n'est pas une erreur critique
+          // puisque nous avons déjà supprimé la tâche localement
+          if (serverError.response && serverError.response.status === 404) {
+            console.log(`[AXIOS] Tâche non trouvée en base de données lors de la suppression`);
+            console.log(`[AXIOS] Tentative de suppression locale pour ID: ${id}`);
+            
+            // Vérifier si la tâche a été supprimée localement
+            const todoStillExists = state.todos.some(t => 
+              (t._id && t._id === id) || (t.id && t.id === id)
+            );
+            
+            if (todoStillExists) {
+              console.log(`[AXIOS] Tâche encore présente localement, suppression forcée`);
+              commit('DELETE_TODO', id);
+            } else {
+              console.log(`[AXIOS] Aucune tâche locale trouvée avec cet ID`);
+            }
+            
+            // Ceci n'est pas une erreur critique, donc on ne lance pas d'exception
+            return { success: true, message: "Tâche supprimée localement uniquement" };
+          }
+          
+          // Pour les autres erreurs, on les propage
+          throw serverError;
         }
         
         return { success: true };
@@ -1433,25 +1510,38 @@ export default createStore({
               console.log(`[DEBUG] Ajout de l'ID utilisateur ${state.user.id} à la tâche "${todo.title}"`);
             }
             
-            // Si la tâche a un ID, faire une mise à jour
+            // Si la tâche a un ID, essayer de la mettre à jour d'abord
             if (todo.id || todo._id) {
-              console.log(`[DEBUG] Mise à jour de la tâche existante "${todo.title}" (ID: ${todo.id || todo._id})`);
-              const { data } = await axios.put(`/todos/${todo.id || todo._id}`, todoWithUserId);
-              syncedTodos.push(data);
-            } else {
-              // Sinon, créer une nouvelle tâche
-              console.log(`[DEBUG] Création d'une nouvelle tâche "${todo.title}"`);
-              // Supprimer tout ID potentiellement présent pour éviter les erreurs "id must be unique"
-              const todoToCreate = { ...todoWithUserId };
-              if (todoToCreate.id) delete todoToCreate.id;
-              if (todoToCreate._id) delete todoToCreate._id;
-              
-              const { data } = await axios.post('/todos', todoToCreate);
-              syncedTodos.push(data);
+              try {
+                console.log(`[DEBUG] Tentative de mise à jour de la tâche existante "${todo.title}" (ID: ${todo.id || todo._id})`);
+                const { data } = await axios.put(`/todos/${todo.id || todo._id}`, todoWithUserId);
+                syncedTodos.push(data);
+                successCount++;
+                console.log(`[DEBUG] Mise à jour réussie pour la tâche "${todo.title}"`);
+                continue; // Passer à la tâche suivante si la mise à jour a réussi
+              } catch (updateError) {
+                // Si l'erreur est 404 (tâche non trouvée), essayer de créer une nouvelle tâche
+                if (updateError.response && updateError.response.status === 404) {
+                  console.log(`[DEBUG] Tâche non trouvée sur le serveur (ID: ${todo.id || todo._id}), tentative de création`);
+                  // Continuer au code ci-dessous pour créer une nouvelle tâche
+                } else {
+                  // Pour les autres erreurs, les propager
+                  throw updateError;
+                }
+              }
             }
             
+            // Créer une nouvelle tâche
+            console.log(`[DEBUG] Création d'une nouvelle tâche "${todo.title}"`);
+            // Supprimer tout ID potentiellement présent pour éviter les erreurs "id must be unique"
+            const todoToCreate = { ...todoWithUserId };
+            if (todoToCreate.id) delete todoToCreate.id;
+            if (todoToCreate._id) delete todoToCreate._id;
+            
+            const { data } = await axios.post('/todos', todoToCreate);
+            syncedTodos.push(data);
             successCount++;
-            console.log(`[DEBUG] Synchronisation réussie pour la tâche "${todo.title}"`);
+            console.log(`[DEBUG] Création réussie pour la tâche "${todo.title}" avec nouvel ID ${data.id || data._id}`);
           } catch (error) {
             console.error(`[DEBUG] Erreur lors de la synchronisation de la tâche "${todo.title}":`, error);
             errorCount++;
