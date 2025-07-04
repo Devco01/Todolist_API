@@ -9,27 +9,10 @@
       </router-link>
     </div>
     
-    <!-- Bouton menu mobile -->
-    <button 
-      class="mobile-menu-btn"
-      @click="toggleMobileMenu"
-      :class="{ active: showMobileMenu }"
-      aria-label="Menu"
-    >
-      <span class="hamburger-line"></span>
-      <span class="hamburger-line"></span>
-      <span class="hamburger-line"></span>
-    </button>
-    
-    <div class="navbar-menu" :class="{ active: showMobileMenu }">
+    <div class="navbar-menu">
       <!-- Afficher si l'utilisateur est connecté -->
       <template v-if="isAuthenticated">
         <div class="user-info">
-          <div class="user-avatar">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-            </svg>
-          </div>
           <span class="welcome">Bonjour, {{ username }}</span>
         </div>
         <button @click="handleLogout" class="logout-btn">
@@ -43,7 +26,7 @@
       </template>
       <!-- Afficher si l'utilisateur n'est pas connecté -->
       <template v-else>
-        <router-link to="/login" class="navbar-item" @click="closeMobileMenu">
+        <router-link to="/login" class="navbar-item">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
             <polyline points="10 17 15 12 10 7"></polyline>
@@ -51,7 +34,7 @@
           </svg>
           <span>Connexion</span>
         </router-link>
-        <router-link to="/register" class="navbar-item" @click="closeMobileMenu">
+        <router-link to="/register" class="navbar-item">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
             <circle cx="8.5" cy="7" r="4"></circle>
@@ -62,13 +45,6 @@
         </router-link>
       </template>
     </div>
-    
-    <!-- Overlay pour fermer le menu mobile -->
-    <div 
-      v-if="showMobileMenu" 
-      class="mobile-overlay"
-      @click="closeMobileMenu"
-    ></div>
   </nav>
 </template>
 
@@ -77,11 +53,6 @@ import { mapState, mapActions } from 'vuex';
 
 export default {
   name: 'NavBar',
-  data() {
-    return {
-      showMobileMenu: false
-    }
-  },
   computed: {
     ...mapState({
       isAuthenticated: state => state.isAuthenticated,
@@ -95,23 +66,8 @@ export default {
     ...mapActions(['logout']),
     async handleLogout() {
       await this.logout();
-      this.closeMobileMenu();
       this.$router.push('/login');
-    },
-    toggleMobileMenu() {
-      this.showMobileMenu = !this.showMobileMenu;
-    },
-    closeMobileMenu() {
-      this.showMobileMenu = false;
     }
-  },
-  mounted() {
-    // Fermer le menu mobile lors du redimensionnement
-    window.addEventListener('resize', () => {
-      if (window.innerWidth > 768) {
-        this.closeMobileMenu();
-      }
-    });
   }
 }
 </script>
@@ -128,10 +84,6 @@ export default {
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-}
-
-.navbar-brand {
-  z-index: 1001;
 }
 
 .brand-link {
@@ -160,46 +112,6 @@ export default {
   letter-spacing: 1px;
 }
 
-.mobile-menu-btn {
-  display: none;
-  flex-direction: column;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  z-index: 1001;
-  padding: 8px;
-  border-radius: 6px;
-  transition: var(--transition);
-}
-
-.mobile-menu-btn:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-}
-
-.hamburger-line {
-  width: 24px;
-  height: 3px;
-  background-color: white;
-  margin: 2px 0;
-  transition: 0.3s;
-  border-radius: 2px;
-}
-
-.mobile-menu-btn.active .hamburger-line:nth-child(1) {
-  transform: rotate(-45deg) translate(-5px, 6px);
-}
-
-.mobile-menu-btn.active .hamburger-line:nth-child(2) {
-  opacity: 0;
-}
-
-.mobile-menu-btn.active .hamburger-line:nth-child(3) {
-  transform: rotate(45deg) translate(-5px, -6px);
-}
-
 .navbar-menu {
   display: flex;
   align-items: center;
@@ -214,23 +126,6 @@ export default {
   background-color: rgba(255, 255, 255, 0.1);
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.user-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #d4a373, #e9c46a);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-.user-avatar svg {
-  width: 18px;
-  height: 18px;
-  color: white;
 }
 
 .navbar-item {
@@ -284,14 +179,12 @@ export default {
   color: rgba(255, 255, 255, 0.9);
 }
 
-.mobile-overlay {
-  display: none;
-}
-
 /* Responsive Mobile */
 @media (max-width: 768px) {
   .navbar {
     padding: 1rem 1.25rem;
+    flex-wrap: wrap;
+    gap: 1rem;
   }
   
   .brand-link {
@@ -303,102 +196,39 @@ export default {
     height: 24px;
   }
   
-  .mobile-menu-btn {
-    display: flex;
-  }
-  
   .navbar-menu {
-    position: fixed;
-    top: 0;
-    right: -100%;
-    width: 280px;
-    height: 100vh;
-    background: linear-gradient(180deg, #4a7c59, #2c5530);
-    flex-direction: column;
-    justify-content: flex-start;
-    align-items: stretch;
-    padding: 6rem 1.5rem 2rem;
+    width: 100%;
+    justify-content: center;
     gap: 1rem;
-    transition: right 0.3s ease;
-    z-index: 1000;
-    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
-  }
-  
-  .navbar-menu.active {
-    right: 0;
+    flex-wrap: wrap;
   }
   
   .user-info {
-    flex-direction: column;
-    text-align: center;
-    padding: 1.5rem 1rem;
-    background-color: rgba(255, 255, 255, 0.15);
-    border-radius: 12px;
-    margin-bottom: 1rem;
-  }
-  
-  .user-avatar {
-    width: 48px;
-    height: 48px;
-    margin-bottom: 0.75rem;
-  }
-  
-  .user-avatar svg {
-    width: 24px;
-    height: 24px;
-  }
-  
-  .welcome {
-    font-size: 1rem;
-    font-weight: 600;
+    order: 1;
+    width: 100%;
+    justify-content: center;
+    margin-bottom: 0.5rem;
   }
   
   .navbar-item {
-    width: 100%;
-    padding: 1rem 1.25rem;
-    margin-bottom: 0.5rem;
-    border-radius: 12px;
-    font-size: 1rem;
-    justify-content: flex-start;
-    background-color: rgba(255, 255, 255, 0.05);
-    border: 2px solid rgba(255, 255, 255, 0.1);
-  }
-  
-  .navbar-item:hover {
-    background-color: rgba(255, 255, 255, 0.2);
-    border-color: rgba(255, 255, 255, 0.3);
-    transform: translateX(4px);
-  }
-  
-  .navbar-item svg {
-    width: 20px;
-    height: 20px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.9rem;
+    flex: 1;
+    justify-content: center;
+    min-width: 120px;
   }
   
   .logout-btn {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.9rem;
+    order: 2;
     width: 100%;
-    padding: 1rem 1.25rem;
-    margin-top: 1rem;
-    font-size: 1rem;
     justify-content: center;
-    border-radius: 12px;
   }
   
-  .logout-btn svg {
-    width: 20px;
-    height: 20px;
-  }
-  
-  .mobile-overlay {
-    display: block;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.5);
-    z-index: 999;
-    backdrop-filter: blur(2px);
+  .welcome {
+    font-size: 0.85rem;
+    text-align: center;
   }
 }
 
@@ -417,50 +247,19 @@ export default {
     height: 20px;
   }
   
-  .mobile-menu-btn {
-    width: 40px;
-    height: 40px;
-  }
-  
-  .hamburger-line {
-    width: 20px;
-    height: 2px;
-  }
-  
-  .navbar-menu {
-    width: 100%;
-    right: -100%;
-    padding: 5rem 1rem 2rem;
-  }
-  
-  .user-info {
-    padding: 1.25rem 0.875rem;
-  }
-  
   .navbar-item {
-    padding: 0.875rem 1rem;
-    font-size: 0.95rem;
+    padding: 0.625rem 0.75rem;
+    font-size: 0.85rem;
+    min-width: 100px;
   }
   
   .logout-btn {
-    padding: 0.875rem 1rem;
-    font-size: 0.95rem;
+    padding: 0.625rem 0.75rem;
+    font-size: 0.85rem;
   }
-}
-
-/* Animations supplémentaires */
-@keyframes slideInRight {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
+  
+  .welcome {
+    font-size: 0.8rem;
   }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
-.navbar-menu.active {
-  animation: slideInRight 0.3s ease-out;
 }
 </style> 
