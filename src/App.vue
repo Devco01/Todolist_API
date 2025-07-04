@@ -1,5 +1,8 @@
 <template>
   <div class="app-container">
+    <!-- Composant d'alerte pour les problèmes de stockage mobile -->
+    <MobileStorageAlert />
+    
     <NavBar />
     <div class="bg-image"></div>
     <div class="content-wrapper">
@@ -22,12 +25,14 @@
 import { computed, watchEffect, onMounted, onUnmounted } from 'vue';
 import { useStore } from 'vuex';
 import NavBar from './components/NavBar.vue';
+import MobileStorageAlert from './components/MobileStorageAlert.vue';
 import axios from './utils/axios';
 import { mapState, mapMutations, mapActions } from 'vuex';
 
 export default {
   components: {
-    NavBar
+    NavBar,
+    MobileStorageAlert
   },
   setup() {
     const store = useStore();
@@ -130,7 +135,26 @@ export default {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         console.log('Application de nouveau visible - Synchronisation des tâches');
-        syncTodos();
+        
+        // NOUVEAU: Gestion spéciale pour mobile
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        if (isMobile) {
+          console.log('[MOBILE] Retour d\'arrière-plan détecté - Synchronisation prioritaire');
+          
+          // Forcer le chargement immédiat depuis le stockage local pour affichage rapide
+          const todos = store.state.todos;
+          if (!todos || todos.length === 0) {
+            console.log('[MOBILE] Chargement d\'urgence depuis le stockage local...');
+            store.dispatch('loadFromLocalStorageOnly');
+          }
+          
+          // Puis synchroniser avec le serveur
+          setTimeout(() => {
+            syncTodos();
+          }, 500);
+        } else {
+          syncTodos();
+        }
       }
     };
     
@@ -704,12 +728,109 @@ export default {
         // Ajout d'une sauvegarde périodique toutes les 30 secondes
         const saveInterval = setInterval(forceSaveTodos, 30 * 1000);
         
-        // Ajouter un écouteur d'événement pour détecter la reprise après veille
+        // Ajouter un écouteur d'événements pour détecter la reprise après veille
         document.addEventListener('visibilitychange', handleVisibilityChange);
+        
+        // NOUVEAU: Gestionnaires d'événements spécifiques aux mobiles
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        
+        if (isMobile) {
+          console.log('[MOBILE] Configuration des gestionnaires d\'événements mobiles');
+          
+          // Gestionnaire pour la mise en veille/réveil
+          document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden') {
+              console.log('[MOBILE] Application mise en arrière-plan - Sauvegarde immédiate');
+              forceSaveTodos();
+              
+              // Sauvegarde de sécurité avec timestamp
+              const emergencyBackup = {
+                todos: store.state.todos,
+                timestamp: Date.now(),
+                user: store.state.user
+              };
+              
+              try {
+                localStorage.setItem('mobile_emergency_backup', JSON.stringify(emergencyBackup));
+                console.log('[MOBILE] Sauvegarde d\'urgence créée');
+              } catch (e) {
+                console.error('[MOBILE] Échec de la sauvegarde d\'urgence:', e);
+              }
+            }
+          });
+          
+          // Gestionnaire pour la mise en focus (retour à l'application)
+          window.addEventListener('focus', () => {
+            console.log('[MOBILE] Application remise en focus - Vérification des données');
+            
+            // Vérifier si les données sont toujours présentes
+            const currentTodos = store.state.todos;
+            if (!currentTodos || currentTodos.length === 0) {
+              console.log('[MOBILE] Données perdues détectées - Tentative de récupération');
+              
+                             // Essayer de récupérer depuis la sauvegarde d'urgence
+               try {
+                 const emergencyData = localStorage.getItem('mobile_emergency_backup');
+                 if (emergencyData) {
+                   const backup = JSON.parse(emergencyData);
+                   if (backup.todos && Array.isArray(backup.todos) && backup.todos.length > 0) {
+                     console.log(`[MOBILE] Récupération de ${backup.todos.length} tâches depuis la sauvegarde d'urgence`);
+                     store.commit('SET_TODOS', backup.todos);
+                     
+                     // Déclencher l'événement pour l'alerte mobile
+                     window.dispatchEvent(new CustomEvent('mobileDataRecovered', {
+                       detail: { count: backup.todos.length }
+                     }));
+                     
+                     // Notification à l'utilisateur
+                     store.commit('SET_NOTIFICATION_STATUS', {
+                       success: true,
+                       message: `${backup.todos.length} tâches récupérées automatiquement`
+                     });
+                   }
+                 }
+               } catch (e) {
+                 console.error('[MOBILE] Erreur lors de la récupération d\'urgence:', e);
+               }
+              
+              // Forcer aussi le chargement depuis le stockage
+              store.dispatch('loadFromLocalStorageOnly');
+            }
+            
+            // Synchroniser après un court délai
+            setTimeout(syncTodos, 1000);
+          });
+          
+          // Gestionnaire pour le changement d'orientation
+          window.addEventListener('orientationchange', () => {
+            console.log('[MOBILE] Changement d\'orientation détecté - Sauvegarde préventive');
+            setTimeout(forceSaveTodos, 500);
+          });
+          
+          // Gestionnaire pour les changements de taille de fenêtre (mobile)
+          let resizeTimeout;
+          window.addEventListener('resize', () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+              console.log('[MOBILE] Redimensionnement terminé - Sauvegarde préventive');
+              forceSaveTodos();
+            }, 300);
+          });
+        }
         
         // Ajouter un gestionnaire d'événements pour l'état de connexion
         window.addEventListener('online', () => {
           console.log('[DEBUG] Connexion internet rétablie - Synchronisation des tâches');
+          
+          if (isMobile) {
+            // Sur mobile, vérifier d'abord les données locales avant la sync
+            const currentTodos = store.state.todos;
+            if (!currentTodos || currentTodos.length === 0) {
+              console.log('[MOBILE] Chargement préalable depuis le stockage local...');
+              store.dispatch('loadFromLocalStorageOnly');
+            }
+          }
+          
           syncTodos();
           // Tenter également de récupérer l'utilisateur si nécessaire
           recoverUserIfNeeded();
@@ -950,5 +1071,273 @@ input:focus, select:focus, textarea:focus {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--primary);
+}
+
+/* Styles responsives globaux */
+@media (max-width: 768px) {
+  body {
+    font-size: 16px; /* Évite le zoom automatique sur iOS */
+    line-height: 1.5;
+  }
+  
+  .app-container {
+    min-height: 100vh;
+    height: auto;
+  }
+  
+  .content-wrapper {
+    padding: 0;
+  }
+  
+  /* Amélioration de la typographie mobile */
+  h1 {
+    font-size: 1.5rem;
+    line-height: 1.3;
+  }
+  
+  h2 {
+    font-size: 1.25rem;
+    line-height: 1.3;
+  }
+  
+  h3 {
+    font-size: 1.125rem;
+    line-height: 1.3;
+  }
+  
+  /* Optimisation des formulaires */
+  input, select, textarea {
+    font-size: 16px; /* Évite le zoom sur iOS */
+    padding: 0.75rem;
+    border-radius: 8px;
+    touch-action: manipulation;
+  }
+  
+  button {
+    min-height: 44px; /* Taille tactile recommandée */
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+    border-radius: 8px;
+    touch-action: manipulation;
+  }
+  
+  /* Amélioration des notifications */
+  .global-notification {
+    bottom: 10px;
+    right: 10px;
+    left: 10px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+  }
+}
+
+/* Styles pour très petits écrans */
+@media (max-width: 480px) {
+  body {
+    font-size: 16px;
+    line-height: 1.4;
+  }
+  
+  .bg-image {
+    background-size: cover;
+    background-position: center center;
+    background-attachment: scroll; /* Évite les problèmes sur mobile */
+  }
+  
+  /* Typographie optimisée */
+  h1 {
+    font-size: 1.25rem;
+    line-height: 1.25;
+    margin-bottom: 0.75rem;
+  }
+  
+  h2 {
+    font-size: 1.125rem;
+    line-height: 1.25;
+    margin-bottom: 0.75rem;
+  }
+  
+  h3 {
+    font-size: 1rem;
+    line-height: 1.25;
+    margin-bottom: 0.5rem;
+  }
+  
+  /* Formulaires optimisés */
+  input, select, textarea {
+    padding: 0.875rem;
+    font-size: 16px;
+    border-radius: 8px;
+    border-width: 2px;
+    line-height: 1.3;
+  }
+  
+  input:focus, select:focus, textarea:focus {
+    box-shadow: 0 0 0 3px rgba(74, 124, 89, 0.15);
+    border-color: var(--primary);
+  }
+  
+  button {
+    min-height: 48px;
+    padding: 0.875rem 1.25rem;
+    font-size: 1rem;
+    font-weight: 600;
+    border-radius: 8px;
+    line-height: 1.2;
+  }
+  
+  /* Notifications adaptées aux petits écrans */
+  .global-notification {
+    position: fixed;
+    bottom: 10px;
+    left: 10px;
+    right: 10px;
+    padding: 14px 16px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    text-align: center;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  }
+  
+  .notification-icon {
+    font-size: 1.1rem;
+  }
+}
+
+/* Styles pour écrans extra-petits */
+@media (max-width: 360px) {
+  body {
+    font-size: 15px;
+    line-height: 1.4;
+  }
+  
+  h1 {
+    font-size: 1.125rem;
+    line-height: 1.2;
+  }
+  
+  h2 {
+    font-size: 1rem;
+    line-height: 1.2;
+  }
+  
+  h3 {
+    font-size: 0.95rem;
+    line-height: 1.2;
+  }
+  
+  input, select, textarea {
+    padding: 0.75rem;
+    font-size: 16px;
+  }
+  
+  button {
+    min-height: 44px;
+    padding: 0.75rem 1rem;
+    font-size: 0.95rem;
+  }
+  
+  .global-notification {
+    padding: 12px 14px;
+    font-size: 0.85rem;
+  }
+}
+
+/* Optimisations tactiles et d'accessibilité */
+@media (max-width: 768px) {
+  /* Amélioration des zones tactiles */
+  a, button, [role="button"], input[type="checkbox"], input[type="radio"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* Amélioration du contraste */
+  input, select, textarea {
+    background-color: rgba(255, 255, 255, 0.95);
+    color: var(--dark);
+  }
+  
+  /* Désactivation des animations coûteuses sur mobile */
+  *, *::before, *::after {
+    animation-duration: 0.2s !important;
+    animation-delay: 0s !important;
+    transition-duration: 0.2s !important;
+  }
+  
+  /* Amélioration de la barre de défilement sur mobile */
+  ::-webkit-scrollbar {
+    width: 4px;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background: var(--primary);
+    border-radius: 2px;
+  }
+  
+  /* Optimisation de la sélection de texte */
+  ::selection {
+    background-color: rgba(74, 124, 89, 0.3);
+    color: var(--dark);
+  }
+  
+  /* Amélioration des focus outlines pour l'accessibilité */
+  *:focus {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
+  
+  button:focus, input:focus, select:focus, textarea:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(74, 124, 89, 0.2);
+  }
+}
+
+/* Styles pour mode paysage sur mobile */
+@media (max-width: 768px) and (orientation: landscape) {
+  .app-container {
+    min-height: 100vh;
+  }
+  
+  h1, h2, h3 {
+    margin-bottom: 0.5rem;
+  }
+  
+  .global-notification {
+    bottom: 5px;
+    padding: 10px 16px;
+    font-size: 0.85rem;
+  }
+}
+
+/* Optimisations spécifiques pour iOS */
+@supports (-webkit-touch-callout: none) {
+  /* Styles spécifiques iOS */
+  input, select, textarea {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    border-radius: 8px;
+  }
+  
+  button {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+  }
+}
+
+/* Optimisations pour les connexions lentes */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 </style> 

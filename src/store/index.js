@@ -50,8 +50,124 @@ const hasRecentNotification = (todoId, cooldownHours = 12) => {
   }
 };
 
+// NOUVEAU: Détection et gestion des problèmes mobiles
+const isMobile = () => {
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+};
+
+const isIOSSafari = () => {
+  const ua = navigator.userAgent;
+  return /iPad|iPhone|iPod/.test(ua) && /Safari/.test(ua) && !/CriOS/.test(ua) && !/FxiOS/.test(ua);
+};
+
+const isStandalone = () => {
+  return window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+};
+
+// Test de la disponibilité du localStorage (spécialement important sur mobile)
+const testLocalStorageAvailability = () => {
+  try {
+    const test = '__localStorage_test__';
+    localStorage.setItem(test, 'test');
+    localStorage.removeItem(test);
+    return true;
+  } catch (e) {
+    console.error('[MOBILE] localStorage non disponible:', e.message);
+    return false;
+  }
+};
+
+// Stratégie de stockage robuste pour mobile
+const mobileRobustStorage = {
+  // Stockage de secours utilisant plusieurs méthodes
+  stores: ['localStorage', 'sessionStorage', 'memory'],
+  memoryStore: new Map(),
+  
+  setItem(key, value) {
+    const success = { localStorage: false, sessionStorage: false, memory: false };
+    
+    // Essayer localStorage en premier
+    try {
+      if (testLocalStorageAvailability()) {
+        localStorage.setItem(key, value);
+        success.localStorage = true;
+        console.log('[MOBILE] Sauvegarde localStorage réussie');
+      }
+    } catch (e) {
+      console.warn('[MOBILE] Échec localStorage:', e.message);
+    }
+    
+    // Essayer sessionStorage en secours
+    try {
+      sessionStorage.setItem(key, value);
+      success.sessionStorage = true;
+      console.log('[MOBILE] Sauvegarde sessionStorage réussie');
+    } catch (e) {
+      console.warn('[MOBILE] Échec sessionStorage:', e.message);
+    }
+    
+    // Toujours sauvegarder en mémoire
+    this.memoryStore.set(key, value);
+    success.memory = true;
+    
+    return success;
+  },
+  
+  getItem(key) {
+    // Essayer dans l'ordre de priorité
+    try {
+      if (testLocalStorageAvailability()) {
+        const value = localStorage.getItem(key);
+        if (value !== null) {
+          console.log('[MOBILE] Données récupérées depuis localStorage');
+          return value;
+        }
+      }
+    } catch (e) {
+      console.warn('[MOBILE] Erreur lecture localStorage:', e.message);
+    }
+    
+    try {
+      const value = sessionStorage.getItem(key);
+      if (value !== null) {
+        console.log('[MOBILE] Données récupérées depuis sessionStorage');
+        return value;
+      }
+    } catch (e) {
+      console.warn('[MOBILE] Erreur lecture sessionStorage:', e.message);
+    }
+    
+    // En dernier recours, utiliser la mémoire
+    if (this.memoryStore.has(key)) {
+      console.log('[MOBILE] Données récupérées depuis la mémoire');
+      return this.memoryStore.get(key);
+    }
+    
+    return null;
+  },
+  
+  removeItem(key) {
+    try {
+      localStorage.removeItem(key);
+    } catch (e) {}
+    
+    try {
+      sessionStorage.removeItem(key);
+    } catch (e) {}
+    
+    this.memoryStore.delete(key);
+  }
+};
+
 // Fonction pour sauvegarder les todos dans le localStorage avec gestion d'erreur
 const saveTodosToStorage = (todos) => {
+  // NOUVEAU: Détecter l'environnement mobile et utiliser le stockage robuste
+  const isMobileEnv = isMobile();
+  const isIOSEnv = isIOSSafari();
+  const isStandaloneMode = isStandalone();
+  
+  console.log(`[MOBILE] Environnement détecté - Mobile: ${isMobileEnv}, iOS: ${isIOSEnv}, Standalone: ${isStandaloneMode}`);
+  
   try {
     // Vérifier que todos est bien un tableau
     if (!Array.isArray(todos)) {
@@ -62,13 +178,20 @@ const saveTodosToStorage = (todos) => {
     // PROTECTION ANTI-EFFACEMENT MODIFIÉE: 
     // Vérifier si on tente de sauvegarder un tableau vide alors que des données existent déjà
     if (todos.length === 0) {
-      const existingData = localStorage.getItem(STORAGE_KEY);
+      // Vérifier s'il y a des données existantes (en utilisant le stockage robuste sur mobile)
+      let existingData;
+      if (isMobileEnv) {
+        existingData = mobileRobustStorage.getItem(STORAGE_KEY);
+      } else {
+        existingData = localStorage.getItem(STORAGE_KEY);
+      }
+      
       if (existingData && existingData.length > 2 && existingData !== '[]') {
         try {
           const existingTodos = JSON.parse(existingData);
           
           // Récupérer l'utilisateur actuel
-          const currentUser = JSON.parse(localStorage.getItem('user'));
+          const currentUser = JSON.parse(localStorage.getItem('user') || 'null');
           const currentUserId = currentUser?.id;
           
           // Si les todos existants appartiennent à un autre utilisateur, permettre l'écrasement
@@ -102,43 +225,93 @@ const saveTodosToStorage = (todos) => {
     const jsonString = JSON.stringify(todos);
     console.log('[DEBUG] Sauvegarde dans localStorage:', jsonString);
     
-    // NOUVELLE STRATÉGIE: Doublement des sauvegardes pour éviter la corruption
-    localStorage.setItem(STORAGE_KEY, jsonString);
-    
-    // Utiliser aussi un stockage de secours avec timestamp
-    const backupKey = `${STORAGE_KEY}_backup`;
-    localStorage.setItem(backupKey, jsonString);
-    localStorage.setItem(`${backupKey}_timestamp`, Date.now().toString());
-    
-    // Double vérification de la sauvegarde
-    const savedData = localStorage.getItem(STORAGE_KEY);
-    if (savedData !== jsonString) {
-      console.error('[DEBUG] Problème lors de la sauvegarde dans localStorage - Les données ne correspondent pas:', 
-        'Sauvegardé:', savedData, 
-        'Original:', jsonString);
+    if (isMobileEnv) {
+      // NOUVEAU: Utiliser le stockage robuste sur mobile
+      const success = mobileRobustStorage.setItem(STORAGE_KEY, jsonString);
+      console.log(`[MOBILE] Résultats de sauvegarde:`, success);
       
-      // Tentative de récupération depuis la sauvegarde
-      const backupData = localStorage.getItem(backupKey);
-      if (backupData === jsonString) {
-        console.log('[DEBUG] Récupération depuis la sauvegarde de secours');
-        localStorage.setItem(STORAGE_KEY, backupData);
-        return true;
+      // Créer des sauvegardes supplémentaires pour mobile
+      const backupKey = `${STORAGE_KEY}_mobile_backup`;
+      mobileRobustStorage.setItem(backupKey, jsonString);
+      mobileRobustStorage.setItem(`${backupKey}_timestamp`, Date.now().toString());
+      
+      // Vérification spéciale pour mobile
+      const savedData = mobileRobustStorage.getItem(STORAGE_KEY);
+      if (savedData !== jsonString) {
+        console.warn('[MOBILE] Problème de sauvegarde détecté, utilisation du stockage de secours');
+        
+        // En mode mobile, même si localStorage échoue, on considère le succès si une autre méthode fonctionne
+        if (success.sessionStorage || success.memory) {
+          console.log('[MOBILE] Sauvegarde alternative réussie');
+          return true;
+        }
+        return false;
       }
       
-      return false;
+      console.log(`[MOBILE] ${todos.length} todos sauvegardés avec succès`);
+      return true;
+      
+    } else {
+      // Comportement normal pour desktop
+      // NOUVELLE STRATÉGIE: Doublement des sauvegardes pour éviter la corruption
+      localStorage.setItem(STORAGE_KEY, jsonString);
+      
+      // Utiliser aussi un stockage de secours avec timestamp
+      const backupKey = `${STORAGE_KEY}_backup`;
+      localStorage.setItem(backupKey, jsonString);
+      localStorage.setItem(`${backupKey}_timestamp`, Date.now().toString());
+      
+      // Double vérification de la sauvegarde
+      const savedData = localStorage.getItem(STORAGE_KEY);
+      if (savedData !== jsonString) {
+        console.error('[DEBUG] Problème lors de la sauvegarde dans localStorage - Les données ne correspondent pas:', 
+          'Sauvegardé:', savedData, 
+          'Original:', jsonString);
+        
+        // Tentative de récupération depuis la sauvegarde
+        const backupData = localStorage.getItem(backupKey);
+        if (backupData === jsonString) {
+          console.log('[DEBUG] Récupération depuis la sauvegarde de secours');
+          localStorage.setItem(STORAGE_KEY, backupData);
+          return true;
+        }
+        
+        return false;
+      }
+      
+      console.log(`[DEBUG] ${todos.length} todos sauvegardés dans localStorage (${jsonString.length} caractères)`)
+      return true;
     }
     
-    console.log(`[DEBUG] ${todos.length} todos sauvegardés dans localStorage (${jsonString.length} caractères)`)
-    return true;
   } catch (error) {
     console.error('[DEBUG] Erreur lors de la sauvegarde des todos dans localStorage:', error)
+    
+    // NOUVEAU: Gestion d'erreur spéciale pour mobile
+    if (isMobileEnv) {
+      console.log('[MOBILE] Tentative de sauvegarde de secours sur mobile...');
+      try {
+        const jsonString = JSON.stringify(todos);
+        // Essayer de forcer la sauvegarde dans sessionStorage et mémoire
+        const fallbackSuccess = mobileRobustStorage.setItem(`${STORAGE_KEY}_emergency`, jsonString);
+        if (fallbackSuccess.sessionStorage || fallbackSuccess.memory) {
+          console.log('[MOBILE] Sauvegarde d\'urgence réussie');
+          return true;
+        }
+      } catch (fallbackError) {
+        console.error('[MOBILE] Échec total de la sauvegarde:', fallbackError);
+      }
+    }
     
     // En cas d'erreur, tenter une nouvelle fois avec un délai
     try {
       setTimeout(() => {
         console.log('[DEBUG] Tentative de sauvegarde de secours après erreur...');
         const jsonString = JSON.stringify(todos);
-        localStorage.setItem(STORAGE_KEY, jsonString);
+        if (isMobileEnv) {
+          mobileRobustStorage.setItem(STORAGE_KEY, jsonString);
+        } else {
+          localStorage.setItem(STORAGE_KEY, jsonString);
+        }
         console.log('[DEBUG] Sauvegarde de secours réussie');
       }, 500);
     } catch (retryError) {
@@ -230,13 +403,22 @@ const recoverTodosFromBackup = () => {
 
 // Modifions la fonction loadTodosFromStorage pour utiliser le système de récupération
 const loadTodosFromStorage = () => {
+  // NOUVEAU: Utiliser le stockage robuste sur mobile
+  const isMobileEnv = isMobile();
+  
   try {
-    const savedTodos = localStorage.getItem(STORAGE_KEY)
-    console.log('[DEBUG] Chargement des todos depuis localStorage:', savedTodos ? `Données trouvées (${savedTodos.length} caractères)` : 'Aucune donnée')
+    let savedTodos;
+    if (isMobileEnv) {
+      savedTodos = mobileRobustStorage.getItem(STORAGE_KEY);
+      console.log('[MOBILE] Chargement des todos depuis le stockage robuste:', savedTodos ? `Données trouvées (${savedTodos.length} caractères)` : 'Aucune donnée');
+    } else {
+      savedTodos = localStorage.getItem(STORAGE_KEY);
+      console.log('[DEBUG] Chargement des todos depuis localStorage:', savedTodos ? `Données trouvées (${savedTodos.length} caractères)` : 'Aucune donnée');
+    }
     
     // Afficher le contenu brut pour diagnostic
     if (savedTodos) {
-      console.log('[DEBUG] Contenu brut du localStorage:', savedTodos);
+      console.log('[DEBUG] Contenu brut du stockage:', savedTodos);
     }
     
     // Si pas de données, essayer la récupération
@@ -244,7 +426,40 @@ const loadTodosFromStorage = () => {
       if (!savedTodos) {
         console.log('[DEBUG] Aucune donnée trouvée, tentative de récupération...');
       } else {
-        console.log('[DEBUG] Tableau vide détecté dans localStorage, tentative de récupération...');
+        console.log('[DEBUG] Tableau vide détecté dans le stockage, tentative de récupération...');
+      }
+      
+      // NOUVEAU: Récupération spéciale pour mobile
+      if (isMobileEnv) {
+        // Essayer de récupérer depuis les sauvegardes mobiles
+        const mobileBackup = mobileRobustStorage.getItem(`${STORAGE_KEY}_mobile_backup`);
+        if (mobileBackup && mobileBackup.length > 2) {
+          try {
+            const backupTodos = JSON.parse(mobileBackup);
+            if (Array.isArray(backupTodos) && backupTodos.length > 0) {
+              console.log('[MOBILE] Récupération depuis la sauvegarde mobile:', backupTodos.length, 'tâches');
+              // Restaurer dans le stockage principal
+              mobileRobustStorage.setItem(STORAGE_KEY, mobileBackup);
+              return backupTodos;
+            }
+          } catch (e) {
+            console.error('[MOBILE] Erreur lors de la récupération mobile:', e);
+          }
+        }
+        
+        // Essayer la sauvegarde d'urgence
+        const emergencyBackup = mobileRobustStorage.getItem(`${STORAGE_KEY}_emergency`);
+        if (emergencyBackup && emergencyBackup.length > 2) {
+          try {
+            const emergencyTodos = JSON.parse(emergencyBackup);
+            if (Array.isArray(emergencyTodos) && emergencyTodos.length > 0) {
+              console.log('[MOBILE] Récupération depuis la sauvegarde d\'urgence:', emergencyTodos.length, 'tâches');
+              return emergencyTodos;
+            }
+          } catch (e) {
+            console.error('[MOBILE] Erreur lors de la récupération d\'urgence:', e);
+          }
+        }
       }
       
       const recoveredTodos = recoverTodosFromBackup();
