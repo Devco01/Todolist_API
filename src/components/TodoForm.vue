@@ -528,17 +528,215 @@ export default {
 
 /* Responsive */
 @media (max-width: 768px) {
+  .todo-form {
+    padding: 1rem;
+    margin: 0 0.5rem;
+  }
+  
+  .form-title {
+    font-size: 1.25rem;
+    margin-bottom: 1rem;
+  }
+  
   .form-row {
     flex-direction: column;
-    gap: 1rem;
+    gap: 0.75rem;
   }
   
   .form-actions {
     flex-direction: column-reverse;
+    gap: 0.75rem;
   }
   
   .submit-btn, .cancel-btn {
     width: 100%;
+    padding: 0.875rem;
+    font-size: 1rem;
+  }
+  
+  .priority-options {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  
+  .priority-label {
+    padding: 0.75rem;
+    font-size: 1rem;
+    text-align: center;
+  }
+  
+  .time-input {
+    gap: 0.5rem;
+    justify-content: center;
+  }
+  
+  .time-select {
+    padding: 0.75rem;
+    font-size: 1rem;
+    text-align: center;
+  }
+  
+  .time-separator {
+    font-size: 1.25rem;
+    font-weight: bold;
+  }
+}
+
+/* Styles pour très petits écrans */
+@media (max-width: 480px) {
+  .todo-form {
+    padding: 0.75rem;
+    margin: 0 0.25rem;
+    border-radius: 6px;
+  }
+  
+  .form-title {
+    font-size: 1.125rem;
+    text-align: center;
+    margin-bottom: 1rem;
+  }
+  
+  .form-group {
+    margin-bottom: 1rem;
+  }
+  
+  .form-label {
+    font-size: 0.9rem;
+    margin-bottom: 0.4rem;
+    font-weight: 600;
+  }
+  
+  .form-control {
+    padding: 0.75rem;
+    font-size: 16px; /* Évite le zoom sur iOS */
+    border-radius: 6px;
+  }
+  
+  .form-control:focus {
+    box-shadow: 0 0 0 3px rgba(74, 124, 89, 0.15);
+  }
+  
+  .priority-options {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+  
+  .priority-label {
+    padding: 0.875rem 1rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    border-width: 2px;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+  }
+  
+  .time-input {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 0.75rem;
+    align-items: center;
+    justify-items: center;
+  }
+  
+  .time-select {
+    width: 100%;
+    padding: 0.75rem;
+    text-align: center;
+    font-size: 1.1rem;
+    font-weight: 600;
+    border-radius: 6px;
+    background-position: right 12px center;
+  }
+  
+  .time-separator {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: var(--primary);
+  }
+  
+  .notification-section {
+    padding: 0.75rem;
+    border-radius: 6px;
+  }
+  
+  .notification-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+  
+  .notification-info {
+    padding: 0.75rem;
+    font-size: 0.85rem;
+    border-radius: 6px;
+  }
+  
+  /* Amélioration de l'espacement vertical */
+  .form-row {
+    margin-bottom: 1rem;
+  }
+  
+  .form-actions {
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.3);
+  }
+  
+  .submit-btn, .cancel-btn {
+    padding: 1rem;
+    font-size: 1rem;
+    font-weight: 600;
+    border-radius: 8px;
+    min-height: 48px; /* Taille tactile recommandée */
+  }
+  
+  /* Amélioration du contraste pour mobile */
+  .form-control {
+    border-width: 2px;
+    background-color: rgba(255, 255, 255, 0.95);
+  }
+  
+  .form-control:focus {
+    border-color: var(--primary);
+    background-color: white;
+  }
+  
+  /* Optimisation textarea sur mobile */
+  textarea.form-control {
+    min-height: 100px;
+    resize: vertical;
+  }
+}
+
+/* Styles pour écrans extra-petits (Galaxy Fold, etc.) */
+@media (max-width: 360px) {
+  .todo-form {
+    padding: 0.5rem;
+    margin: 0;
+  }
+  
+  .form-title {
+    font-size: 1rem;
+    margin-bottom: 0.75rem;
+  }
+  
+  .time-input {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+  
+  .time-separator {
+    display: none;
+  }
+  
+  .time-select {
+    font-size: 1rem;
+  }
+  
+  .priority-label {
+    padding: 0.75rem 0.5rem;
+    font-size: 0.9rem;
   }
 }
 

@@ -58,20 +58,23 @@
           <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
           <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
         </svg>
+        <span class="btn-label">Notifier</span>
       </button>
-      <button @click="editTodo" class="action-btn edit-btn" title="Modifier">
+      <button @click="editTodo" class="action-btn edit-btn" title="Modifier la tâche">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
           <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
         </svg>
+        <span class="btn-label">Modifier</span>
       </button>
-      <button @click="$emit('delete')" class="action-btn delete-btn" title="Supprimer">
+      <button @click="$emit('delete')" class="action-btn delete-btn" title="Supprimer la tâche">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="3 6 5 6 21 6"></polyline>
           <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
           <line x1="10" y1="11" x2="10" y2="17"></line>
           <line x1="14" y1="11" x2="14" y2="17"></line>
         </svg>
+        <span class="btn-label">Supprimer</span>
       </button>
     </div>
   </div>
@@ -510,67 +513,457 @@ export default {
 
 .todo-actions {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.75rem;
   margin-left: 1rem;
+  flex-wrap: wrap;
 }
 
 .action-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background-color: rgba(255, 255, 255, 0.8);
+  gap: 0.5rem;
+  padding: 0.5rem 0.875rem;
+  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.9);
   color: var(--gray);
   transition: var(--transition);
-  border: 1px solid var(--gray-light);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  border: 2px solid transparent;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  font-size: 0.85rem;
+  font-weight: 500;
+  min-height: 36px;
+  white-space: nowrap;
 }
 
 .action-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.btn-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.notification-btn {
+  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+  color: var(--gray);
+  border-color: rgba(108, 117, 125, 0.2);
+}
+
+.notification-btn:hover {
+  background: linear-gradient(135deg, #e9ecef, #dee2e6);
+  color: var(--dark);
+  border-color: var(--gray);
+}
+
+.notification-btn.active {
+  background: linear-gradient(135deg, #d4a373, #e9c46a);
+  color: white;
+  border-color: var(--accent);
+  box-shadow: 0 2px 8px rgba(212, 163, 115, 0.3);
+}
+
+.notification-btn.active:hover {
+  background: linear-gradient(135deg, #c69749, #d4a373);
+  transform: translateY(-3px);
+  box-shadow: 0 6px 16px rgba(212, 163, 115, 0.4);
+}
+
+.edit-btn {
+  background: linear-gradient(135deg, #4a7c59, #588157);
+  color: white;
+  border-color: var(--primary);
+  box-shadow: 0 2px 8px rgba(74, 124, 89, 0.2);
 }
 
 .edit-btn:hover {
-  background-color: var(--primary-light);
+  background: linear-gradient(135deg, #3a6c49, #4a7c59);
+  border-color: var(--secondary);
+  transform: translateY(-3px);
+  box-shadow: 0 6px 16px rgba(74, 124, 89, 0.3);
+}
+
+.edit-btn svg {
+  stroke-width: 2.5;
+}
+
+.delete-btn {
+  background: linear-gradient(135deg, #bc4749, #d62d20);
   color: white;
-  border-color: var(--primary);
+  border-color: var(--danger);
+  box-shadow: 0 2px 8px rgba(188, 71, 73, 0.2);
 }
 
 .delete-btn:hover {
-  background-color: var(--danger);
-  color: white;
-  border-color: var(--danger);
+  background: linear-gradient(135deg, #a13638, #bc4749);
+  border-color: #a13638;
+  transform: translateY(-3px);
+  box-shadow: 0 6px 16px rgba(188, 71, 73, 0.3);
+}
+
+.delete-btn svg {
+  stroke-width: 2.5;
 }
 
 .completed {
   opacity: 0.7;
 }
 
+.completed .action-btn {
+  opacity: 0.8;
+}
+
+.completed .action-btn:hover {
+  opacity: 1;
+}
+
 @media (max-width: 768px) {
-  .todo-header {
+  .todo-item {
+    padding: 1rem;
+    margin-bottom: 0.75rem;
     flex-direction: column;
   }
   
+  .todo-checkbox {
+    margin-right: 0;
+    margin-bottom: 0.75rem;
+    align-self: flex-start;
+  }
+  
+  .todo-content {
+    width: 100%;
+    margin-bottom: 0.75rem;
+  }
+  
+  .todo-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+  
+  .todo-title {
+    margin-right: 0;
+    font-size: 1.1rem;
+    line-height: 1.3;
+    word-break: break-word;
+  }
+  
   .todo-badges {
-    margin-top: 0.5rem;
+    width: 100%;
+    justify-content: flex-start;
+    margin-top: 0;
+    gap: 0.5rem;
+  }
+  
+  .category-badge, .priority-badge, .urgent-badge {
+    font-size: 0.75rem;
+    padding: 0.35rem 0.6rem;
+    border-radius: 16px;
+  }
+  
+  .todo-description {
+    margin: 0.75rem 0;
+    padding: 0.75rem;
+    font-size: 0.9rem;
+    line-height: 1.4;
+  }
+  
+  .todo-meta {
+    flex-direction: column;
+    gap: 0.5rem;
+    align-items: flex-start;
+    margin-top: 0.75rem;
+  }
+  
+  .due-date, .due-time {
+    font-size: 0.85rem;
+    gap: 0.35rem;
   }
   
   .todo-actions {
-    flex-direction: row;
-    margin-top: 0.5rem;
+    width: 100%;
+    justify-content: center;
+    gap: 1rem;
     margin-left: 0;
+    margin-top: 0;
+    padding-top: 0.75rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+    flex-wrap: wrap;
+  }
+  
+  .action-btn {
+    padding: 0.75rem 1rem;
+    font-size: 0.9rem;
+    min-height: 44px;
+    gap: 0.5rem;
+    border-radius: 8px;
+    flex: 1;
+    min-width: 100px;
+    max-width: 120px;
+  }
+  
+  .btn-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+  
+  .action-btn svg {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
   }
 }
 
-.notification-btn {
-  color: var(--gray);
+/* Styles pour très petits écrans */
+@media (max-width: 480px) {
+  .todo-item {
+    padding: 0.875rem;
+    margin-bottom: 0.75rem;
+    border-radius: 8px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-rows: auto auto auto;
+    gap: 0.75rem;
+    align-items: start;
+  }
+  
+  .todo-checkbox {
+    grid-column: 1;
+    grid-row: 1;
+    margin: 0;
+    margin-top: 0.25rem;
+  }
+  
+  .checkbox-label {
+    width: 24px;
+    height: 24px;
+    border-width: 2px;
+  }
+  
+  .todo-content {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    margin: 0;
+    width: 100%;
+    min-width: 0;
+  }
+  
+  .todo-header {
+    flex-direction: column;
+    gap: 0.75rem;
+    align-items: flex-start;
+  }
+  
+  .todo-title {
+    font-size: 1.05rem;
+    line-height: 1.3;
+    margin: 0;
+    font-weight: 600;
+    word-break: break-word;
+    hyphens: auto;
+  }
+  
+  .todo-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    width: 100%;
+    margin: 0;
+  }
+  
+  .category-badge, .priority-badge, .urgent-badge {
+    font-size: 0.7rem;
+    padding: 0.3rem 0.5rem;
+    border-radius: 12px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+  }
+  
+  .todo-description {
+    margin: 0.75rem 0 0 0;
+    padding: 0.75rem;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    border-radius: 6px;
+    background-color: rgba(255, 255, 255, 0.6);
+  }
+  
+  .todo-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+    font-size: 0.8rem;
+    color: var(--gray);
+  }
+  
+  .due-date, .due-time {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    white-space: nowrap;
+    background-color: rgba(255, 255, 255, 0.4);
+    padding: 0.25rem 0.5rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+  }
+  
+  .due-date svg, .due-time svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+  }
+  
+  .todo-actions {
+    grid-column: 1 / 3;
+    grid-row: 3;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0.5rem;
+    margin: 0;
+    padding-top: 0.75rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+  }
+  
+  .action-btn {
+    padding: 0.75rem 0.5rem;
+    font-size: 0.75rem;
+    min-height: 48px;
+    gap: 0.25rem;
+    border-radius: 8px;
+    flex-direction: column;
+    text-align: center;
+    min-width: auto;
+    max-width: none;
+  }
+  
+  .btn-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    line-height: 1.1;
+  }
+  
+  .action-btn svg {
+    width: 16px;
+    height: 16px;
+    margin-bottom: 0.125rem;
+  }
+  
+  /* États terminé amélioré */
+  .todo-item.completed {
+    opacity: 0.6;
+  }
+  
+  .completed .todo-title {
+    text-decoration: line-through;
+    color: var(--gray);
+  }
+  
+  .completed .todo-badges {
+    opacity: 0.7;
+  }
 }
 
-.notification-btn.active {
-  color: var(--primary);
+/* Styles pour écrans extra-petits */
+@media (max-width: 360px) {
+  .todo-item {
+    padding: 0.75rem;
+    gap: 0.5rem;
+  }
+  
+  .todo-title {
+    font-size: 1rem;
+    line-height: 1.25;
+  }
+  
+  .todo-badges {
+    gap: 0.3rem;
+  }
+  
+  .category-badge, .priority-badge, .urgent-badge {
+    font-size: 0.65rem;
+    padding: 0.25rem 0.4rem;
+    border-radius: 10px;
+  }
+  
+  .todo-description {
+    font-size: 0.8rem;
+    padding: 0.6rem;
+  }
+  
+  .todo-meta {
+    gap: 0.5rem;
+    font-size: 0.75rem;
+  }
+  
+  .due-date, .due-time {
+    padding: 0.2rem 0.4rem;
+    font-size: 0.75rem;
+  }
+  
+  .due-date svg, .due-time svg {
+    width: 12px;
+    height: 12px;
+  }
+  
+  .todo-actions {
+    gap: 0.375rem;
+  }
+  
+  .action-btn {
+    padding: 0.625rem 0.375rem;
+    font-size: 0.7rem;
+    min-height: 44px;
+    gap: 0.2rem;
+  }
+  
+  .btn-label {
+    font-size: 0.65rem;
+  }
+  
+  .action-btn svg {
+    width: 14px;
+    height: 14px;
+  }
+}
+
+/* Amélioration des transitions et animations sur mobile */
+@media (max-width: 768px) {
+  .todo-item {
+    transition: all 0.2s ease;
+  }
+  
+  .todo-item:hover {
+    transform: none; /* Désactive le hover sur mobile */
+    box-shadow: var(--box-shadow);
+  }
+  
+  .action-btn {
+    transition: all 0.2s ease;
+  }
+  
+  /* Amélioration du tap feedback */
+  .action-btn:active {
+    transform: scale(0.95);
+  }
+  
+  .checkbox-label:active {
+    transform: scale(0.95);
+  }
+  
+  /* Optimisation des hover effects sur mobile */
+  .action-btn:hover {
+    transform: none;
+  }
+  
+  .action-btn:active {
+    transform: scale(0.95);
+    opacity: 0.8;
+  }
 }
 
 .notification-modal-overlay {

@@ -750,32 +750,350 @@ export default {
     padding: 1rem 0;
   }
   
-  .filters {
+  .container {
+    padding: 0 0.75rem;
+  }
+  
+  .app-title {
+    font-size: 1.5rem;
+    text-align: center;
     flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .header-icon {
+    width: 28px;
+    height: 28px;
+    margin-right: 0;
+  }
+  
+  .todo-controls {
+    padding: 1rem;
+    margin-bottom: 1rem;
+  }
+  
+  .search-input {
+    font-size: 16px; /* Évite le zoom sur iOS */
+    padding: 0.875rem;
+  }
+  
+  .filters {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
     gap: 0.75rem;
   }
   
   .filter-group {
     width: 100%;
+    min-width: unset;
+  }
+  
+  .filter-group label {
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+  
+  .filter-select {
+    padding: 0.75rem;
+    font-size: 0.9rem;
+    border-radius: 6px;
   }
   
   .modal-content {
     padding: 1.5rem;
     width: 95%;
+    max-width: 500px;
+  }
+  
+  .modal-title {
+    font-size: 1.25rem;
+    text-align: center;
+  }
+  
+  .edit-form {
+    gap: 1rem;
+  }
+  
+  .modal-actions {
+    flex-direction: column-reverse;
+    gap: 0.75rem;
+  }
+  
+  .cancel-btn, .save-btn, .delete-btn {
+    width: 100%;
+    padding: 0.875rem;
+    font-size: 1rem;
+    min-height: 48px;
+  }
+  
+  .offline-indicator {
+    font-size: 0.75rem;
+    padding: 0.4rem 0.8rem;
+    margin-top: 0.75rem;
+    justify-content: center;
   }
 }
 
-.offline-indicator {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  background-color: rgba(255, 165, 0, 0.2);
-  color: #ff9800;
-  padding: 0.25rem 0.75rem;
-  border-radius: 16px;
-  font-size: 0.8rem;
-  font-weight: 500;
-  margin-top: 0.5rem;
-  border: 1px solid #ff9800;
+/* Styles pour très petits écrans */
+@media (max-width: 480px) {
+  .app-header {
+    padding: 1rem 0;
+  }
+  
+  .app-content {
+    padding: 0.75rem 0;
+  }
+  
+  .container {
+    padding: 0 0.5rem;
+  }
+  
+  .app-title {
+    font-size: 1.25rem;
+    gap: 0.5rem;
+  }
+  
+  .header-icon {
+    width: 24px;
+    height: 24px;
+  }
+  
+  .todo-form-section {
+    margin-bottom: 1.5rem;
+  }
+  
+  .todo-controls {
+    padding: 0.875rem;
+    margin-bottom: 1rem;
+    border-radius: 8px;
+  }
+  
+  .search-filter {
+    margin-bottom: 1rem;
+  }
+  
+  .search-input {
+    padding: 1rem;
+    font-size: 16px;
+    border-radius: 8px;
+    border-width: 2px;
+  }
+  
+  .filters {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+  
+  .filter-group {
+    background-color: rgba(255, 255, 255, 0.1);
+    padding: 0.75rem;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+  
+  .filter-group label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: var(--dark);
+  }
+  
+  .filter-select {
+    width: 100%;
+    padding: 0.875rem;
+    font-size: 1rem;
+    border-radius: 8px;
+    border-width: 2px;
+    background-color: white;
+    color: var(--dark);
+  }
+  
+  .filter-select:focus {
+    box-shadow: 0 0 0 3px rgba(74, 124, 89, 0.15);
+  }
+  
+  .loading-container, .error-container, .empty-state {
+    padding: 2rem 1rem;
+    border-radius: 8px;
+  }
+  
+  .loading-spinner {
+    width: 36px;
+    height: 36px;
+  }
+  
+  .error-icon {
+    font-size: 1.75rem;
+  }
+  
+  .retry-btn {
+    padding: 0.875rem 1.5rem;
+    font-size: 1rem;
+    border-radius: 8px;
+    min-height: 48px;
+  }
+  
+  .modal-overlay {
+    padding: 1rem;
+    align-items: flex-start;
+    padding-top: 2rem;
+  }
+  
+  .modal-content {
+    width: 100%;
+    max-width: none;
+    padding: 1.25rem;
+    border-radius: 8px;
+    max-height: calc(100vh - 4rem);
+  }
+  
+  .delete-modal {
+    max-width: none;
+  }
+  
+  .modal-title {
+    font-size: 1.125rem;
+    margin-bottom: 1.25rem;
+  }
+  
+  .edit-form {
+    gap: 1rem;
+  }
+  
+  /* Amélioration des champs du modal d'édition */
+  .edit-form .form-group {
+    margin-bottom: 1rem;
+  }
+  
+  .edit-form .form-control {
+    padding: 0.875rem;
+    font-size: 1rem;
+    border-radius: 8px;
+    border-width: 2px;
+  }
+  
+  .edit-form .form-row {
+    flex-direction: column;
+    gap: 1rem;
+  }
+  
+  .edit-form .time-input {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 0.75rem;
+    align-items: center;
+    justify-items: center;
+  }
+  
+  .edit-form .time-select {
+    text-align: center;
+    font-size: 1.1rem;
+    font-weight: 600;
+    padding: 0.875rem;
+  }
+  
+  .edit-form .time-separator {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: var(--primary);
+  }
+}
+
+/* Styles pour écrans extra-petits */
+@media (max-width: 360px) {
+  .app-header {
+    padding: 0.75rem 0;
+  }
+  
+  .container {
+    padding: 0 0.375rem;
+  }
+  
+  .app-title {
+    font-size: 1.125rem;
+  }
+  
+  .header-icon {
+    width: 20px;
+    height: 20px;
+  }
+  
+  .todo-controls {
+    padding: 0.75rem;
+  }
+  
+  .search-input {
+    padding: 0.875rem;
+    font-size: 16px;
+  }
+  
+  .filter-group {
+    padding: 0.625rem;
+  }
+  
+  .filter-group label {
+    font-size: 0.8rem;
+  }
+  
+  .filter-select {
+    padding: 0.75rem;
+    font-size: 0.95rem;
+  }
+  
+  .modal-overlay {
+    padding: 0.5rem;
+    padding-top: 1rem;
+  }
+  
+  .modal-content {
+    padding: 1rem;
+    border-radius: 6px;
+  }
+  
+  .modal-title {
+    font-size: 1rem;
+  }
+  
+  .edit-form .time-input {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+  
+  .edit-form .time-separator {
+    display: none;
+  }
+}
+
+/* Amélioration de l'accessibilité mobile */
+@media (max-width: 768px) {
+  /* Amélioration du contraste */
+  .todo-controls {
+    background-color: var(--overlay-light);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+  }
+  
+  /* Optimisation des zones tactiles */
+  .retry-btn, .cancel-btn, .save-btn, .delete-btn {
+    min-height: 44px;
+    touch-action: manipulation;
+  }
+  
+  /* Amélioration de la lisibilité */
+  .filter-group label {
+    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5);
+  }
+  
+  /* Optimisation de l'espacement */
+  .todo-list-section {
+    margin-top: 0.5rem;
+  }
+  
+  /* Amélioration de l'indicateur hors ligne */
+  .offline-indicator {
+    font-weight: 600;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(255, 152, 0, 0.3);
+  }
 }
 </style>
