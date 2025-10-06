@@ -544,6 +544,13 @@ const loadTodosFromStorage = () => {
 // Flag pour suivre si c'est la première fois que l'application charge
 let isFirstLoad = true;
 
+// Nouvelle stratégie : priorité à la base de données
+const shouldUseDatabase = () => {
+  const user = JSON.parse(localStorage.getItem('user') || 'null');
+  const authToken = localStorage.getItem('authToken');
+  return !!(user && authToken);
+};
+
 // *** DIAGNOSTIC DE LANCEMENT ***
 // Vérifier l'état initial du localStorage au chargement du module
 const initialDiagnostic = () => {
@@ -556,6 +563,12 @@ const initialDiagnostic = () => {
     
     const todosRaw = localStorage.getItem(STORAGE_KEY);
     console.log('[DIAGNOSTIC] Contenu brut pour la clé todos:', todosRaw);
+    
+    // Vérifier si l'utilisateur est connecté
+    const user = JSON.parse(localStorage.getItem('user') || 'null');
+    const authToken = localStorage.getItem('authToken');
+    console.log('[DIAGNOSTIC] Utilisateur connecté:', !!user, 'Token:', !!authToken);
+    console.log('[DIAGNOSTIC] Stratégie de stockage:', shouldUseDatabase() ? 'Base de données' : 'localStorage uniquement');
     
     // Tester si une sauvegarde fonctionne
     const testArray = [{id: 'test', title: 'Test initial'}];
@@ -577,7 +590,8 @@ initialDiagnostic();
 
 export default createStore({
   state: {
-    todos: loadTodosFromStorage(),
+    // NOUVELLE STRATÉGIE: Charger depuis localStorage seulement si pas connecté
+    todos: shouldUseDatabase() ? [] : loadTodosFromStorage(),
     loading: false,
     error: null,
     isOfflineMode: false,
@@ -588,7 +602,9 @@ export default createStore({
     // Nouvelle propriété pour la synchronisation d'urgence
     emergencySyncInProgress: false,
     // Nouvelle propriété pour contrôler les notifications au démarrage
-    suppressInitialNotifications: false
+    suppressInitialNotifications: false,
+    // Nouvelle propriété pour suivre la stratégie de stockage
+    useDatabase: shouldUseDatabase()
   },
   getters: {
     sortedTodos: (state) => {
@@ -826,9 +842,13 @@ export default createStore({
     SET_USER(state, user) {
       state.user = user;
       localStorage.setItem('user', JSON.stringify(user));
+      // Mettre à jour la stratégie de stockage quand l'utilisateur change
+      state.useDatabase = shouldUseDatabase();
     },
     SET_AUTHENTICATED(state, value) {
       state.isAuthenticated = value;
+      // Mettre à jour la stratégie de stockage quand l'authentification change
+      state.useDatabase = shouldUseDatabase();
     },
     LOGOUT(state) {
       // SÉCURITÉ CRITIQUE: Sauvegarder les tâches actuelles avant de se déconnecter
@@ -875,11 +895,16 @@ export default createStore({
       // Nettoyer les informations d'authentification
       state.user = null;
       state.isAuthenticated = false;
+      state.useDatabase = false; // Retourner en mode localStorage uniquement
       localStorage.removeItem('user');
       localStorage.removeItem('authToken');
     },
     SET_EMERGENCY_SYNC_IN_PROGRESS(state, value) {
       state.emergencySyncInProgress = value;
+    },
+    UPDATE_STORAGE_STRATEGY(state) {
+      state.useDatabase = shouldUseDatabase();
+      console.log('[DEBUG] Stratégie de stockage mise à jour:', state.useDatabase ? 'Base de données' : 'localStorage uniquement');
     }
   },
   actions: {
@@ -908,174 +933,104 @@ export default createStore({
       }
     },
     async fetchTodos({ commit, dispatch, state }) {
-      // SOLUTION FORCÉE: Si des tâches existent déjà, les garder en sauvegarde
-      const existingTodos = [...state.todos];
-      const hasExistingTodos = Array.isArray(existingTodos) && existingTodos.length > 0;
-      
-      if (hasExistingTodos) {
-        console.log(`[DEBUG] ${existingTodos.length} tâches déjà en mémoire avant fetchTodos`);
-      }
-      
       commit('SET_LOADING', true);
       commit('SET_ERROR', null);
       
-      try {
-        console.log('[DEBUG] Tentative de récupération des todos depuis le serveur...');
-        const { data } = await axios.get('/todos');
-        
-        // Vérifier la validité des données reçues
-        if (!data || !Array.isArray(data)) {
-          throw new Error('Format de données invalide reçu du serveur');
-        }
-        
-        console.log(`[DEBUG] ${data.length} todos récupérés depuis le serveur`);
-        
-        // Stratégie de synchronisation intelligente
-        if (data.length === 0 && hasExistingTodos) {
-          // Cas 1: Le serveur n'a pas de tâches mais le client en a
-          console.warn('[DEBUG] Le serveur a renvoyé un tableau vide alors que des tâches existent localement');
+      // NOUVELLE STRATÉGIE: Si l'utilisateur est connecté, utiliser uniquement la base de données
+      if (state.isAuthenticated && state.useDatabase) {
+        try {
+          console.log('[DEBUG] Mode base de données: récupération des todos depuis le serveur...');
+          const { data } = await axios.get('/todos');
           
-          // AMÉLIORÉ: Tenter de synchroniser les tâches locales vers le serveur
-          // si l'utilisateur est authentifié
-          if (state.isAuthenticated) {
-            console.log('[DEBUG] Tentative de synchronisation des tâches locales vers le serveur...');
-            
-            // On tente de synchroniser via la nouvelle action forceSyncToServer
-            try {
-              const syncResult = await dispatch('forceSyncToServer', existingTodos);
-              if (syncResult.success) {
-                return syncResult;
-              }
-            } catch (syncError) {
-              console.error('[DEBUG] Erreur lors de la synchronisation forcée:', syncError);
-            }
+          // Vérifier la validité des données reçues
+          if (!data || !Array.isArray(data)) {
+            throw new Error('Format de données invalide reçu du serveur');
           }
           
-          // Conserver les tâches locales si la synchronisation échoue ou n'est pas nécessaire
-          console.log('[DEBUG] Conservation des tâches locales (le serveur n\'a pas de tâches)');
+          console.log(`[DEBUG] ${data.length} todos récupérés depuis la base de données`);
           
-          commit('SET_NOTIFICATION_STATUS', {
-            success: true,
-            message: 'Conservation des données locales'
-          });
-          
-          return { success: true, data: existingTodos, preserved: true };
-        } else if (data.length > 0) {
-          // Cas 2: Le serveur a des tâches - les utiliser
-          console.log(`[DEBUG] Utilisation des ${data.length} tâches du serveur`);
-          
-          // AMÉLIORATION: Fusionner les tâches locales et du serveur pour éviter la perte de données
-          if (hasExistingTodos && isFirstLoad) {
-            // Identifier les tâches qui existent localement mais pas sur le serveur
-            const serverTodoIds = data.map(todo => todo.id || todo._id);
-            const localOnlyTodos = existingTodos.filter(todo => {
-              const todoId = todo.id || todo._id;
-              return todoId && !serverTodoIds.includes(todoId);
-            });
-            
-            if (localOnlyTodos.length > 0) {
-              console.log(`[DEBUG] ${localOnlyTodos.length} tâches existent uniquement en local, tentative de synchronisation...`);
-              
-              // Synchroniser les tâches locales manquantes vers le serveur
-              let syncCount = 0;
-              for (const todo of localOnlyTodos) {
-                try {
-                  // IMPORTANT: Supprimer les IDs pour éviter les erreurs "id must be unique"
-                  const todoToSync = { ...todo };
-                  if (todoToSync.id) delete todoToSync.id;
-                  if (todoToSync._id) delete todoToSync._id;
-                  
-                  const { data: newTodo } = await axios.post('/todos', todoToSync);
-                  if (newTodo && newTodo.id) {
-                    syncCount++;
-                    // Ajouter la tâche nouvellement créée aux données du serveur
-                    data.push(newTodo);
-                  }
-                } catch (syncError) {
-                  console.error(`[DEBUG] Erreur lors de la synchronisation de la tâche locale "${todo.title}":`, syncError);
-                }
-              }
-              
-              console.log(`[DEBUG] ${syncCount}/${localOnlyTodos.length} tâches locales synchronisées avec le serveur`);
-              
-              if (syncCount > 0) {
-                commit('SET_NOTIFICATION_STATUS', {
-                  success: true,
-                  message: `${syncCount} tâches locales ajoutées au serveur`
-                });
-              }
-            }
-          }
-          
-          // Mettre à jour le store avec les données fusionnées
+          // Mettre à jour le store avec les données de la base de données
           commit('SET_TODOS', data);
           commit('SET_OFFLINE_MODE', false);
+          
+          // Sauvegarder en cache local pour l'offline
+          saveTodosToStorage(data);
           
           if (!isFirstLoad) {
             commit('SET_NOTIFICATION_STATUS', {
               success: true,
-              message: 'Synchronisation réussie avec le serveur'
+              message: 'Données synchronisées depuis la base de données'
             });
           }
-        } else if (data.length === 0 && !hasExistingTodos) {
-          // Cas 3: Ni le serveur ni le client n'ont de tâches
+          
+          // Mettre à jour le flag après le premier chargement
+          isFirstLoad = false;
+          
+          return { success: true, data };
+          
+        } catch (error) {
+          console.error('[DEBUG] Erreur lors de la récupération depuis la base de données:', error);
+          
+          const errorMessage = error.response?.data?.error || 'Erreur lors du chargement des tâches';
+          commit('SET_ERROR', errorMessage);
+          
+          // En cas d'erreur, essayer de charger depuis le cache local
+          const localTodos = loadTodosFromStorage();
+          if (localTodos.length > 0) {
+            console.log(`[DEBUG] Fallback: utilisation des ${localTodos.length} tâches du cache local`);
+            commit('SET_TODOS', localTodos);
+            commit('SET_OFFLINE_MODE', true);
+            
+            if (!isFirstLoad) {
+              commit('SET_NOTIFICATION_STATUS', {
+                success: true,
+                message: 'Utilisation du cache local (problème de connexion)'
+              });
+            }
+            
+            isFirstLoad = false;
+            return { success: true, data: localTodos, offline: true };
+          }
+          
+          // Si pas de cache local, retourner un tableau vide
           commit('SET_TODOS', []);
-          commit('SET_OFFLINE_MODE', false);
+          isFirstLoad = false;
+          
+          return { success: false, error: errorMessage };
+        } finally {
+          commit('SET_LOADING', false);
+        }
+      }
+      
+      // MODE HORS LIGNE: Si l'utilisateur n'est pas connecté, utiliser localStorage uniquement
+      try {
+        console.log('[DEBUG] Mode hors ligne: utilisation du localStorage uniquement');
+        const localTodos = loadTodosFromStorage();
+        
+        commit('SET_TODOS', localTodos);
+        commit('SET_OFFLINE_MODE', true);
+        
+        console.log(`[DEBUG] ${localTodos.length} todos chargés depuis localStorage`);
+        
+        if (!isFirstLoad && localTodos.length > 0) {
+          commit('SET_NOTIFICATION_STATUS', {
+            success: true,
+            message: 'Mode hors ligne - données locales uniquement'
+          });
         }
         
         // Mettre à jour le flag après le premier chargement
         isFirstLoad = false;
         
-        return { success: true, data: data.length > 0 ? data : existingTodos };
+        return { success: true, data: localTodos, offline: true };
+        
       } catch (error) {
-        console.error('[DEBUG] Erreur lors de la récupération des todos:', error);
-        
-        const errorMessage = error.response?.data?.error || 'Erreur lors du chargement des tâches';
-        commit('SET_ERROR', errorMessage);
-        
-        // SOLUTION FORCÉE: Conserver les tâches existantes en cas d'erreur
-        if (hasExistingTodos) {
-          console.warn('[DEBUG] Erreur de récupération depuis le serveur, conservation des tâches existantes');
-          commit('SET_OFFLINE_MODE', true);
-          
-          // Afficher la notification seulement si ce n'est pas le premier chargement
-          if (!isFirstLoad) {
-            commit('SET_NOTIFICATION_STATUS', {
-              success: true,
-              message: 'Conservation des données locales (problème de connexion)'
-            });
-          }
-          
-          commit('SET_LOADING', false);
-          return { success: true, data: existingTodos, offline: true, preserved: true };
-        }
-        
-        // Si pas de réponse du serveur, utiliser le stockage local
-        if (!error.response) {
-          console.log('[DEBUG] Pas de réponse du serveur, utilisation du stockage local');
-          commit('SET_OFFLINE_MODE', true);
-          const localTodos = loadTodosFromStorage();
-          
-          // Notification d'utilisation de données locales seulement si ce n'est pas le premier chargement
-          if (!isFirstLoad) {
-            commit('SET_NOTIFICATION_STATUS', {
-              success: true,
-              message: 'Utilisation des données locales (mode hors ligne)'
-            });
-          }
-          
-          commit('SET_TODOS', localTodos);
-          
-          // Mettre à jour le flag après le premier chargement
-          isFirstLoad = false;
-          
-          return { success: true, data: localTodos, offline: true };
-        }
-        
-        // Mettre à jour le flag après le premier chargement même en cas d'erreur
+        console.error('[DEBUG] Erreur lors du chargement local:', error);
+        commit('SET_ERROR', 'Erreur lors du chargement des données locales');
+        commit('SET_TODOS', []);
         isFirstLoad = false;
         
-        return { success: false, error: errorMessage };
+        return { success: false, error: 'Erreur lors du chargement des données locales' };
       } finally {
         commit('SET_LOADING', false);
       }
@@ -1083,6 +1038,7 @@ export default createStore({
     async createTodo({ commit, state }, todo) {
       commit('SET_ERROR', null);
       commit('SET_LOADING', true);
+      
       try {
         console.log('Store: Tentative de création de la tâche avec les données:', todo);
         
@@ -1098,9 +1054,8 @@ export default createStore({
         // CORRECTIF: S'assurer que notificationEmail est vide si notifications désactivées
         if (!todo.notificationsEnabled) {
           console.log('[DEBUG] Notifications désactivées, suppression de l\'email pour éviter la validation');
-          todo.notificationEmail = null; // Utiliser null au lieu de chaîne vide pour éviter les problèmes de validation
+          todo.notificationEmail = null;
         } else if (todo.notificationsEnabled && (!todo.notificationEmail || !todo.notificationEmail.trim())) {
-          // Si notifications activées mais email vide, afficher erreur
           const errorMessage = 'Une adresse email valide est requise pour les notifications';
           console.error(errorMessage);
           commit('SET_ERROR', errorMessage);
@@ -1108,7 +1063,7 @@ export default createStore({
           return { success: false, error: errorMessage };
         }
 
-        // IMPORTANT: S'assurer que l'ID de l'utilisateur est inclus si l'utilisateur est authentifié
+        // Ajouter l'ID utilisateur si authentifié
         if (state.isAuthenticated && state.user) {
           if (!todo.userId) {
             console.log('[DEBUG] Ajout automatique de l\'ID utilisateur à la tâche:', state.user.id);
@@ -1116,76 +1071,74 @@ export default createStore({
           }
         }
 
-        // TOUJOURS supprimer les IDs pour créer une nouvelle tâche plutôt que mettre à jour
-        const todoToSend = { ...todo };
-        if (todoToSend.id) {
-          console.log(`[DEBUG] Suppression de l'ID ${todoToSend.id} pour créer une nouvelle tâche`);
-          delete todoToSend.id;
-        }
-        if (todoToSend._id) {
-          console.log(`[DEBUG] Suppression de l'ID Mongo ${todoToSend._id} pour créer une nouvelle tâche`);
-          delete todoToSend._id;
-        }
-        console.log('[DEBUG] Tâche préparée pour création (sans ID):', todoToSend);
-
-        // Tenter de créer la tâche sur le serveur
-        try {
-          const { data } = await axios.post('/todos', todoToSend);
-          console.log('Réponse API pour createTodo:', data);
-          
-          // Vérifier si l'ID est présent (compatibilité MongoDB/PostgreSQL)
-          if (data && (data._id || data.id)) {
-            // Si l'objet a seulement id mais pas _id, ajouter _id pour la compatibilité frontend
-            if (data.id && !data._id) {
-              data._id = data.id;
+        // NOUVELLE STRATÉGIE: Si connecté, utiliser la base de données
+        if (state.isAuthenticated && state.useDatabase) {
+          try {
+            // Préparer la tâche pour la base de données
+            const todoToSend = { ...todo };
+            if (todoToSend.id) delete todoToSend.id;
+            if (todoToSend._id) delete todoToSend._id;
+            
+            console.log('[DEBUG] Création via base de données:', todoToSend);
+            const { data } = await axios.post('/todos', todoToSend);
+            console.log('Réponse API pour createTodo:', data);
+            
+            if (data && (data._id || data.id)) {
+              if (data.id && !data._id) {
+                data._id = data.id;
+              }
+              
+              commit('ADD_TODO', data);
+              commit('SET_OFFLINE_MODE', false);
+              commit('SET_LOADING', false);
+              
+              return { success: true, data };
+            } else {
+              throw new Error('Réponse invalide du serveur: ID de tâche manquant');
             }
-            commit('ADD_TODO', data);
-            commit('SET_OFFLINE_MODE', false);
+          } catch (serverError) {
+            console.error('[DEBUG] Erreur serveur lors de la création:', serverError);
+            
+            // En cas d'erreur serveur, créer en local et marquer comme offline
+            console.log('[DEBUG] Fallback: création en local après erreur serveur');
+            const newTodo = {
+              ...todo,
+              _id: Math.random().toString(36).substring(2, 15),
+              id: Math.random().toString(36).substring(2, 15),
+              createdAt: new Date().toISOString()
+            };
+            
+            commit('ADD_TODO', newTodo);
+            commit('SET_OFFLINE_MODE', true);
             commit('SET_LOADING', false);
-            return { success: true, data };
-          } else {
-            const errorMessage = 'Réponse invalide du serveur: ID de tâche manquant';
-            console.error(errorMessage, data);
-            throw new Error(errorMessage);
+            
+            return { success: true, data: newTodo, offline: true };
           }
-        } catch (serverError) {
-          console.error('[DEBUG] Erreur serveur lors de la création de la tâche:', serverError);
-          
-          // Si nous sommes authentifiés mais recevons une erreur, créer en mode hors ligne
-          if (state.isAuthenticated) {
-            console.log('[DEBUG] Tentative de création en mode hors ligne malgré l\'authentification');
-          }
-          
-          // Créer en mode hors ligne
-          throw serverError; // Propager l'erreur au bloc catch suivant
         }
+        
+        // MODE HORS LIGNE: Créer uniquement en localStorage
+        console.log('[DEBUG] Création en mode hors ligne (localStorage uniquement)');
+        const newTodo = {
+          ...todo,
+          _id: Math.random().toString(36).substring(2, 15),
+          id: Math.random().toString(36).substring(2, 15),
+          createdAt: new Date().toISOString()
+        };
+        
+        commit('ADD_TODO', newTodo);
+        commit('SET_OFFLINE_MODE', true);
+        commit('SET_LOADING', false);
+        
+        return { success: true, data: newTodo, offline: true };
+        
       } catch (error) {
         console.error('Erreur dans l\'action createTodo:', error);
         
-        // Extraction plus précise du message d'erreur
         let errorMessage = 'Erreur lors de la création de la tâche';
-        let needReconnect = false;
         
         if (error.response) {
           errorMessage = error.response.data?.error || 
                         `Erreur serveur: ${error.response.status} ${error.response.statusText}`;
-          console.error(`Erreur API détaillée:`, error.response.data);
-          
-          // Détecter les erreurs de clé étrangère et d'authentification
-          if (error.response.data?.details && (
-              error.response.data.details.includes('foreign key constraint') ||
-              error.response.data.details.includes('Référence utilisateur invalide')
-          )) {
-            console.log('[DEBUG] Erreur de clé étrangère ou référence utilisateur invalide détectée');
-            errorMessage = 'Votre session semble expirée ou invalide. Veuillez vous reconnecter.';
-            needReconnect = true;
-          }
-          
-          // IMPORTANT: Si c'est une erreur 400, c'est une erreur de validation, pas d'authentification
-          if (error.response.status === 400) {
-            console.log('[DEBUG] Erreur 400 de validation détectée, pas de déconnexion');
-            // Ici on ne fait rien de spécial, on laisse simplement l'erreur être gérée normalement
-          }
         } else if (error.request) {
           errorMessage = 'Le serveur n\'a pas répondu à la requête';
         } else if (error.message) {
@@ -1193,45 +1146,9 @@ export default createStore({
         }
         
         commit('SET_ERROR', errorMessage);
-        
-        // Si une reconnexion est nécessaire, rediriger vers la page de connexion
-        if (needReconnect) {
-          console.log('[DEBUG] Redirection vers la page de connexion suite à une erreur de session');
-          commit('SET_NOTIFICATION_STATUS', {
-            success: false,
-            message: 'Session expirée. Veuillez vous reconnecter.'
-          });
-          
-          // Attendre un peu avant de rediriger
-          setTimeout(() => {
-            if (window.location.pathname !== '/login') {
-              window.location.href = '/login';
-            }
-          }, 2000);
-          
-          commit('SET_LOADING', false);
-          return { success: false, error: errorMessage, needReconnect: true };
-        }
-        
-        // Si pas de réponse du serveur ou autre erreur, utiliser le stockage local
-        console.log('[DEBUG] Création de la tâche en mode hors ligne');
-        commit('SET_OFFLINE_MODE', true);
-        
-        // CORRECTIF: Ajouter l'ID utilisateur en mode hors ligne également
-        const newTodo = {
-          ...todo,
-          _id: Math.random().toString(36).substring(2, 15),
-          createdAt: new Date().toISOString()
-        };
-        
-        // S'assurer que l'ID utilisateur est présent en mode hors ligne aussi
-        if (state.isAuthenticated && state.user && !newTodo.userId) {
-          newTodo.userId = state.user.id;
-        }
-        
-        commit('ADD_TODO', newTodo);
         commit('SET_LOADING', false);
-        return { success: true, data: newTodo, offline: true };
+        
+        return { success: false, error: errorMessage };
       }
     },
     async updateTodo({ commit, state }, todo) {
@@ -1801,6 +1718,34 @@ export default createStore({
         return { success: false, error: error.message, count: 0 };
       } finally {
         commit('SET_EMERGENCY_SYNC_IN_PROGRESS', false);
+      }
+    },
+    
+    // NOUVELLE ACTION: Synchronisation automatique au démarrage
+    async autoSyncOnStartup({ commit, dispatch, state }) {
+      console.log('[DEBUG] Démarrage de la synchronisation automatique');
+      
+      // Si l'utilisateur est connecté, forcer le chargement depuis la base de données
+      if (state.isAuthenticated && state.useDatabase) {
+        console.log('[DEBUG] Utilisateur connecté, synchronisation depuis la base de données');
+        try {
+          await dispatch('fetchTodos');
+          console.log('[DEBUG] Synchronisation automatique réussie');
+          return { success: true, message: 'Données synchronisées depuis la base de données' };
+        } catch (error) {
+          console.error('[DEBUG] Erreur lors de la synchronisation automatique:', error);
+          return { success: false, error: error.message };
+        }
+      } else {
+        console.log('[DEBUG] Utilisateur non connecté, utilisation du localStorage uniquement');
+        try {
+          await dispatch('fetchTodos');
+          console.log('[DEBUG] Chargement local réussi');
+          return { success: true, message: 'Données chargées depuis le stockage local' };
+        } catch (error) {
+          console.error('[DEBUG] Erreur lors du chargement local:', error);
+          return { success: false, error: error.message };
+        }
       }
     }
   }
