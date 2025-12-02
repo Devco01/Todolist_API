@@ -259,19 +259,117 @@ router.get('/:id', protect, async (req, res) => {
 // Mettre à jour une tâche (protégé par authentification)
 router.put('/:id', protect, async (req, res) => {
   try {
-    // Passer l'ID utilisateur pour vérifier l'accès
-    const updatedTodo = await todoPgService.updateTodo(req.params.id, req.body, req.user.id);
-    res.json(updatedTodo);
-  } catch (error) {
-    console.error(`Erreur lors de la mise à jour de la tâche ${req.params.id}:`, error);
+    const todoId = req.params.id;
+    const userId = req.user?.id;
     
-    if (error.message.includes('non trouvée') || error.message.includes('non autorisée')) {
-      return res.status(404).json({ error: 'Tâche non trouvée ou non autorisée' });
+    console.log(`[PUT] /todos/${todoId} - Début de la mise à jour par l'utilisateur ${userId}`);
+    
+    // Vérifier que l'utilisateur est bien authentifié
+    if (!userId) {
+      console.error(`[PUT] /todos/${todoId} - Erreur: ID utilisateur manquant`);
+      return res.status(401).json({ 
+        error: 'Erreur d\'authentification',
+        details: 'ID utilisateur manquant. Veuillez vous reconnecter.'
+      });
     }
     
-    res.status(500).json({ 
+    // Vérifier si la base de données est accessible
+    const { getSequelize } = require('../config/postgres');
+    const sequelize = getSequelize();
+    let dbAvailable = false;
+    
+    if (sequelize) {
+      try {
+        await Promise.race([
+          sequelize.authenticate(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
+        ]);
+        dbAvailable = true;
+        console.log(`[PUT] /todos/${todoId} - Connexion DB disponible`);
+      } catch (dbError) {
+        console.warn(`[PUT] /todos/${todoId} - Connexion DB non disponible:`, dbError.message);
+        dbAvailable = false;
+      }
+    }
+    
+    // Si la DB n'est pas disponible, retourner une erreur explicite mais pas 500
+    if (!dbAvailable) {
+      console.error(`[PUT] /todos/${todoId} - Base de données non disponible`);
+      return res.status(503).json({ 
+        error: 'Service temporairement indisponible',
+        details: 'La base de données n\'est pas accessible pour le moment. Veuillez réessayer plus tard.',
+        dbAvailable: false
+      });
+    }
+    
+    // Passer l'ID utilisateur pour vérifier l'accès
+    try {
+      const updatedTodo = await todoPgService.updateTodo(todoId, req.body, userId);
+      
+      // Convertir en JSON si c'est une instance Sequelize
+      const todoData = updatedTodo?.toJSON ? updatedTodo.toJSON() : updatedTodo;
+      
+      console.log(`[PUT] /todos/${todoId} - Mise à jour réussie`);
+      return res.json(todoData);
+    } catch (updateError) {
+      console.error(`[PUT] /todos/${todoId} - Erreur lors de la mise à jour:`, updateError);
+      
+      // Gestion spécifique des erreurs
+      if (updateError.message && (
+        updateError.message.includes('non trouvée') || 
+        updateError.message.includes('non autorisée') ||
+        updateError.message.includes('not found')
+      )) {
+        return res.status(404).json({ 
+          error: 'Tâche non trouvée ou non autorisée',
+          details: updateError.message
+        });
+      }
+      
+      // Erreurs de validation Sequelize
+      if (updateError.name === 'SequelizeValidationError' || updateError.name === 'SequelizeUniqueConstraintError') {
+        const validationErrors = updateError.errors?.map(err => err.message).join(', ') || updateError.message;
+        console.error(`[PUT] /todos/${todoId} - Erreur de validation:`, validationErrors);
+        return res.status(400).json({
+          error: 'Erreur de validation',
+          details: validationErrors
+        });
+      }
+      
+      // Erreurs de connexion DB
+      if (updateError.name === 'SequelizeConnectionError' || 
+          updateError.name === 'SequelizeConnectionRefusedError' ||
+          updateError.message?.includes('connection') ||
+          updateError.message?.includes('Connection')) {
+        console.error(`[PUT] /todos/${todoId} - Erreur de connexion DB:`, updateError.message);
+        return res.status(503).json({ 
+          error: 'Service temporairement indisponible',
+          details: 'La base de données n\'est pas accessible pour le moment. Veuillez réessayer plus tard.',
+          dbError: true
+        });
+      }
+      
+      // Autres erreurs
+      console.error(`[PUT] /todos/${todoId} - Erreur inattendue:`, updateError);
+      return res.status(500).json({ 
+        error: 'Erreur lors de la mise à jour de la tâche',
+        details: updateError.message || 'Erreur inconnue'
+      });
+    }
+  } catch (error) {
+    console.error(`[PUT] /todos/${req.params.id} - Erreur inattendue dans le handler:`, error);
+    
+    // Si l'erreur vient du middleware protect (authentification)
+    if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError' || error.message?.includes('token')) {
+      return res.status(401).json({ 
+        error: 'Erreur d\'authentification',
+        details: 'Votre session a expiré. Veuillez vous reconnecter.'
+      });
+    }
+    
+    return res.status(500).json({ 
       error: 'Erreur lors de la mise à jour de la tâche',
-      details: error.message
+      details: error.message || 'Erreur inconnue'
     });
   }
 });

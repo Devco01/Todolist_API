@@ -461,38 +461,112 @@ const createTodo = async (todoData) => {
 // Mettre à jour une tâche existante avec vérification utilisateur
 const updateTodo = async (id, updateData, userId = null) => {
   try {
+    console.log(`[TODOPG] updateTodo - ID: ${id}, userId: ${userId}`);
+    
+    // Vérifier si la connexion DB est disponible avant d'essayer
+    const sequelize = getSequelize();
+    if (!sequelize) {
+      console.log(`[TODOPG] updateTodo - Pas de connexion DB, utilisation mémoire`);
+      
+      // Mettre à jour en mémoire
+      const index = inMemoryTodos.findIndex(t => {
+        if (t.id != id && t._id != id) return false;
+        if (userId && t.userId !== userId) return false;
+        return true;
+      });
+      
+      if (index === -1) {
+        throw new Error('Tâche non trouvée ou non autorisée');
+      }
+      
+      inMemoryTodos[index] = {
+        ...inMemoryTodos[index],
+        ...updateData,
+        updatedAt: new Date()
+      };
+      
+      return inMemoryTodos[index];
+    }
+    
+    // Tester la connexion avant de continuer
+    try {
+      await Promise.race([
+        sequelize.authenticate(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
+      ]);
+    } catch (authError) {
+      console.warn(`[TODOPG] updateTodo - Connexion DB non disponible:`, authError.message);
+      
+      // Fallback sur mémoire
+      const index = inMemoryTodos.findIndex(t => {
+        if (t.id != id && t._id != id) return false;
+        if (userId && t.userId !== userId) return false;
+        return true;
+      });
+      
+      if (index === -1) {
+        throw new Error('Tâche non trouvée ou non autorisée');
+      }
+      
+      inMemoryTodos[index] = {
+        ...inMemoryTodos[index],
+        ...updateData,
+        updatedAt: new Date()
+      };
+      
+      return inMemoryTodos[index];
+    }
+    
     if (isModelAvailable()) {
       const TodoModel = getTodoModel();
       
       // Construire la clause where - MODIFICATION: uniquement les tâches de l'utilisateur
-      const whereClause = { id };
+      const whereClause = {};
+      
+      // Gérer les deux formats d'ID (string et number)
+      if (typeof id === 'string' && !isNaN(id)) {
+        whereClause.id = parseInt(id);
+      } else {
+        whereClause.id = id;
+      }
+      
       if (userId) {
         // Ne récupérer que les tâches appartenant à cet utilisateur
         whereClause.userId = userId;
       }
       
+      console.log(`[TODOPG] updateTodo - Clause where:`, JSON.stringify(whereClause));
+      
       // Trouver la tâche avec la condition d'utilisateur si spécifiée
       const todo = await TodoModel.findOne({ where: whereClause });
       
       if (!todo) {
+        console.warn(`[TODOPG] updateTodo - Tâche ${id} non trouvée avec where:`, whereClause);
         throw new Error('Tâche non trouvée ou non autorisée');
       }
       
       // Mettre à jour les champs
       await todo.update(updateData);
       
+      // Recharger pour avoir les valeurs à jour
+      await todo.reload();
+      
       // Mettre à jour la version en mémoire
-      const index = inMemoryTodos.findIndex(t => t.id === id);
+      const todoJson = todo.toJSON();
+      const index = inMemoryTodos.findIndex(t => 
+        (t.id && t.id == id) || (t._id && t._id == id)
+      );
       if (index !== -1) {
-        inMemoryTodos[index] = todo.toJSON();
+        inMemoryTodos[index] = todoJson;
       }
       
+      console.log(`[TODOPG] updateTodo - Mise à jour réussie pour ${id}`);
       return todo;
     } else {
       // Mettre à jour en mémoire - MODIFICATION: uniquement les tâches de l'utilisateur
       const index = inMemoryTodos.findIndex(t => {
         // Vérifier l'ID et que la tâche appartient à l'utilisateur
-        if (t.id !== id) return false;
+        if (t.id != id && t._id != id) return false;
         if (userId && t.userId !== userId) return false;
         return true;
       });
@@ -510,7 +584,25 @@ const updateTodo = async (id, updateData, userId = null) => {
       return inMemoryTodos[index];
     }
   } catch (error) {
-    console.error(`Erreur lors de la mise à jour du todo ${id}:`, error);
+    console.error(`[TODOPG] Erreur lors de la mise à jour du todo ${id}:`, error.message || error);
+    
+    // Si c'est déjà une erreur métier, la relancer telle quelle
+    if (error.message && (
+      error.message.includes('non trouvée') || 
+      error.message.includes('non autorisée')
+    )) {
+      throw error;
+    }
+    
+    // Erreurs de connexion DB
+    if (error.name === 'SequelizeConnectionError' || 
+        error.name === 'SequelizeConnectionRefusedError' ||
+        error.message?.includes('connection') ||
+        error.message?.includes('Connection')) {
+      throw new Error('Base de données non disponible');
+    }
+    
+    // Autres erreurs
     throw error;
   }
 };
