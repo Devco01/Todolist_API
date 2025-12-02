@@ -165,7 +165,7 @@ const loginUser = async (username, password) => {
     }
     
     // Debug - Vérifier si la table User existe
-    const sequelize = getSequelize();
+    // Note: sequelize est déjà déclaré plus haut, on le réutilise
     try {
       const [checkResults] = await sequelize.query(`
         SELECT EXISTS (
