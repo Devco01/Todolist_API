@@ -11,11 +11,18 @@ let inMemoryTodos = [];
 // Initialiser la connexion à la base de données et le modèle
 const init = async () => {
   try {
-    // Connecter à PostgreSQL
-    const connection = await connectPostgres();
-    if (!connection) {
-      console.error('[TODOPG] Échec de connexion à PostgreSQL');
-      return false;
+    // CRITIQUE: Ne PAS appeler connectPostgres() ici si déjà appelé ailleurs
+    // Utiliser getSequelize() qui retourne l'instance existante
+    const sequelize = getSequelize();
+    if (!sequelize) {
+      // Seulement alors essayer de se connecter
+      const connection = await connectPostgres();
+      if (!connection) {
+        console.error('[TODOPG] Échec de connexion à PostgreSQL');
+        return false;
+      }
+    } else {
+      console.log('[TODOPG] Réutilisation de la connexion PostgreSQL existante');
     }
     
     // Vérifier si la table Todo existe

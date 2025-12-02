@@ -253,11 +253,32 @@ app.get('/api/debug-postgres-advanced', async (req, res) => {
         setTimeout(() => reject(new Error('Délai de connexion expiré (10s)')), 10000);
       });
       
-      // Tentative de connexion avec timeout
-      const connection = await Promise.race([
-        connectPostgres(),
-        timeoutPromise
-      ]);
+      // CRITIQUE: Ne PAS appeler connectPostgres() à chaque requête de debug
+      // Utiliser l'instance existante pour éviter les reconnexions en boucle
+      const existingSequelize = getSequelize();
+      let connection = null;
+      
+      if (existingSequelize) {
+        // Tester la connexion existante
+        try {
+          await existingSequelize.authenticate();
+          connection = existingSequelize;
+          console.log('[ADVANCED-DIAG] Utilisation de la connexion existante');
+        } catch (authError) {
+          console.warn('[ADVANCED-DIAG] Connexion existante invalide, nouvelle tentative...');
+          // Seulement alors essayer une nouvelle connexion
+          connection = await Promise.race([
+            connectPostgres(),
+            timeoutPromise
+          ]);
+        }
+      } else {
+        // Pas de connexion existante, essayer d'en créer une
+        connection = await Promise.race([
+          connectPostgres(),
+          timeoutPromise
+        ]);
+      }
       
       const isConnected = !!connection;
       console.log('[ADVANCED-DIAG] Tentative de connexion PostgreSQL:', isConnected ? 'Réussie' : 'Échouée');

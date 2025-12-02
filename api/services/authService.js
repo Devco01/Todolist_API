@@ -19,9 +19,15 @@ const initAuthService = async () => {
       return true;
     }
     
-    // Connecter à PostgreSQL
-    const connection = await connectPostgres();
-    console.log('[AUTH] Résultat de la connexion PostgreSQL:', connection ? 'Succès' : 'Échec');
+    // CRITIQUE: Réutiliser la connexion existante pour éviter les reconnexions en boucle
+    const sequelize = getSequelize();
+    if (!sequelize) {
+      // Seulement si pas de connexion existante, en créer une
+      const connection = await connectPostgres();
+      console.log('[AUTH] Résultat de la connexion PostgreSQL:', connection ? 'Succès' : 'Échec');
+    } else {
+      console.log('[AUTH] Réutilisation de la connexion PostgreSQL existante');
+    }
     
     // Vérifier si le modèle User est disponible
     const UserModel = getUserModel();
