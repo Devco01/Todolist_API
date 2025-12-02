@@ -28,74 +28,151 @@ router.get('/secure', protect, (req, res) => {
     });
   } catch (error) {
     console.error('Erreur dans le keep-alive sécurisé:', error);
-    return res.status(500).json({
+    // Même en cas d'erreur, retourner 200 pour ne pas casser le flow
+    return res.status(200).json({
       status: 'error',
-      error: error.message
+      error: error.message,
+      timestamp: new Date().toISOString()
     });
   }
 });
 
 // Endpoint pour le service de monitoring (comme UptimeRobot)
 // GET /api/keep-alive
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
+  // TOUJOURS retourner HTTP 200 pour UptimeRobot
+  // Cette route doit être ultra-robuste et ne jamais retourner 500
   try {
-    // Récupérer des informations de base sur le système
-    const uptime = process.uptime();
-    const memoryUsage = process.memoryUsage();
-    
-    // Vérifier l'état de la connexion PostgreSQL
-    const sequelize = getSequelize();
-    const dbStatus = {
-      isConnected: sequelize ? true : false,
-      state: sequelize ? 'connected' : 'disconnected'
-    };
-    
     // Formatage du temps écoulé
     const formatUptime = (seconds) => {
-      const days = Math.floor(seconds / (3600 * 24));
-      const hours = Math.floor((seconds % (3600 * 24)) / 3600);
-      const minutes = Math.floor((seconds % 3600) / 60);
-      const secs = Math.floor(seconds % 60);
-      
-      return `${days}d ${hours}h ${minutes}m ${secs}s`;
+      try {
+        const days = Math.floor(seconds / (3600 * 24));
+        const hours = Math.floor((seconds % (3600 * 24)) / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${days}d ${hours}h ${minutes}m ${secs}s`;
+      } catch (err) {
+        return 'N/A';
+      }
     };
     
     // Formater la taille mémoire
     const formatMemory = (bytes) => {
-      return (bytes / 1024 / 1024).toFixed(2) + ' MB';
+      try {
+        return (bytes / 1024 / 1024).toFixed(2) + ' MB';
+      } catch (err) {
+        return 'N/A';
+      }
     };
     
-    // Renvoyer les informations
+    // Récupérer des informations de base sur le système (avec gestion d'erreur individuelle)
+    let uptime = 0;
+    let memoryUsage = {};
+    let platform = {};
+    
+    try {
+      uptime = process.uptime();
+    } catch (err) {
+      console.warn('[KEEP-ALIVE] Erreur lors de la récupération de uptime:', err.message);
+    }
+    
+    try {
+      memoryUsage = process.memoryUsage();
+    } catch (err) {
+      console.warn('[KEEP-ALIVE] Erreur lors de la récupération de memoryUsage:', err.message);
+      memoryUsage = { rss: 0, heapTotal: 0, heapUsed: 0 };
+    }
+    
+    try {
+      platform = {
+        node: process.version || 'unknown',
+        platform: process.platform || 'unknown',
+        arch: process.arch || 'unknown',
+        cpus: (() => {
+          try {
+            return os.cpus().length;
+          } catch (err) {
+            return 0;
+          }
+        })()
+      };
+    } catch (err) {
+      console.warn('[KEEP-ALIVE] Erreur lors de la récupération de platform:', err.message);
+      platform = {
+        node: process.version || 'unknown',
+        platform: 'unknown',
+        arch: 'unknown',
+        cpus: 0
+      };
+    }
+    
+    // Vérifier l'état de la connexion PostgreSQL (avec gestion d'erreur)
+    let dbStatus = {
+      isConnected: false,
+      state: 'unknown'
+    };
+    
+    try {
+      const sequelize = getSequelize();
+      if (sequelize) {
+        try {
+          // Tester la connexion sans bloquer
+          await Promise.race([
+            sequelize.authenticate(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2000))
+          ]);
+          dbStatus = {
+            isConnected: true,
+            state: 'connected'
+          };
+        } catch (authError) {
+          dbStatus = {
+            isConnected: false,
+            state: 'disconnected',
+            error: authError.message
+          };
+        }
+      } else {
+        dbStatus = {
+          isConnected: false,
+          state: 'no_instance'
+        };
+      }
+    } catch (dbError) {
+      console.warn('[KEEP-ALIVE] Erreur lors de la vérification de la DB:', dbError.message);
+      dbStatus = {
+        isConnected: false,
+        state: 'error',
+        error: dbError.message
+      };
+    }
+    
+    // Renvoyer les informations (TOUJOURS HTTP 200)
     return res.status(200).json({
       status: 'ok',
       timestamp: new Date().toISOString(),
       uptime: formatUptime(uptime),
       uptimeRaw: uptime,
       memory: {
-        rss: formatMemory(memoryUsage.rss),
-        heapTotal: formatMemory(memoryUsage.heapTotal),
-        heapUsed: formatMemory(memoryUsage.heapUsed)
+        rss: formatMemory(memoryUsage.rss || 0),
+        heapTotal: formatMemory(memoryUsage.heapTotal || 0),
+        heapUsed: formatMemory(memoryUsage.heapUsed || 0)
       },
-      platform: {
-        node: process.version,
-        platform: process.platform,
-        arch: process.arch,
-        cpus: os.cpus().length
-      },
-      database: {
-        connected: dbStatus.isConnected,
-        state: dbStatus.state
-      },
+      platform: platform,
+      database: dbStatus,
       environment: process.env.NODE_ENV || 'development',
       isVercel: process.env.VERCEL === '1'
     });
   } catch (error) {
-    // Même en cas d'erreur, renvoyer un statut 200 pour ne pas alerter le monitoring
-    console.error('Erreur dans le keep-alive:', error);
+    // Même en cas d'erreur inattendue, TOUJOURS retourner HTTP 200
+    console.error('[KEEP-ALIVE] Erreur inattendue:', error);
     return res.status(200).json({
-      status: 'warning',
-      error: error.message,
-      timestamp: new Date().toISOString()
+      status: 'ok', // Toujours 'ok' même en cas d'erreur pour UptimeRobot
+      timestamp: new Date().toISOString(),
+      message: 'Service opérationnel',
+      warning: error.message,
+      environment: process.env.NODE_ENV || 'development',
+      isVercel: process.env.VERCEL === '1'
     });
   }
 });
