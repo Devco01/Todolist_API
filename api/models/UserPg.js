@@ -29,134 +29,122 @@ const initUserModel = async (force = true) => {
   }
   
   try {
-    // Vérifier d'abord si la table existe déjà
+    // OPTIMISATION: Vérification rapide avec timeout pour éviter les timeouts Vercel
     console.log('[USERPG] Vérification si la table User existe déjà');
+    let tableExists = false;
     try {
-      const [checkResults] = await sequelize.query(`
-        SELECT EXISTS (
-          SELECT FROM information_schema.tables 
-          WHERE table_name = 'User'
-        );
-      `);
-      const tableExists = checkResults[0]?.exists === true;
+      // Timeout très court (1 seconde) pour la vérification
+      const [checkResults] = await Promise.race([
+        sequelize.query(`
+          SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_name = 'User'
+          );
+        `),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Query timeout')), 1000))
+      ]);
+      tableExists = checkResults[0]?.exists === true;
       console.log('[USERPG] Table User existe déjà:', tableExists);
       
       if (tableExists && !force) {
         console.log('[USERPG] Table User existe déjà, pas besoin de la recréer');
         
-        // Vérifier les colonnes de la table
+        // OPTIMISATION: Vérification des colonnes optionnelle et rapide
         try {
-          const [columns] = await sequelize.query(`
-            SELECT column_name, data_type 
-            FROM information_schema.columns 
-            WHERE table_name = 'User'
-          `);
+          const [columns] = await Promise.race([
+            sequelize.query(`
+              SELECT column_name, data_type 
+              FROM information_schema.columns 
+              WHERE table_name = 'User'
+            `),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Query timeout')), 500))
+          ]);
           console.log('[USERPG] Colonnes de la table User:', 
             columns.map(col => `${col.column_name} (${col.data_type})`).join(', '));
         } catch (colError) {
-          console.error('[USERPG] Erreur lors de la vérification des colonnes:', colError);
+          console.warn('[USERPG] Vérification des colonnes ignorée (timeout ou erreur):', colError.message);
+          // Ne pas bloquer si cette vérification échoue
         }
         
         // Initialiser le modèle Sequelize sans forcer la synchronisation
         const model = getUserModel();
         if (model) {
           try {
-            await model.sync({ alter: true }); // Mise à jour douce (alter)
+            // Timeout pour sync aussi
+            await Promise.race([
+              model.sync({ alter: true }), // Mise à jour douce (alter)
+              new Promise((_, reject) => setTimeout(() => reject(new Error('Sync timeout')), 1000))
+            ]);
             console.log('[USERPG] Table User synchronisée en douceur');
             return true;
           } catch (syncError) {
-            console.error('[USERPG] Erreur lors de la synchronisation douce:', syncError);
-            // Continuer malgré l'erreur
+            console.warn('[USERPG] Synchronisation ignorée (timeout ou erreur):', syncError.message);
+            // Continuer malgré l'erreur, la table existe déjà
           }
         }
         
         return true;
       }
     } catch (checkError) {
-      console.error('[USERPG] Erreur lors de la vérification de la table:', checkError);
-      // Continuer avec la création
+      console.warn('[USERPG] Vérification de la table échouée (non bloquant):', checkError.message);
+      // Continuer avec la création ou activer mode mémoire
+      if (checkError.message?.includes('timeout') || checkError.message?.includes('Connection')) {
+        console.log('[USERPG] Connexion DB trop lente, activation du mode mémoire');
+        isUsingMemoryMode = true;
+        return true; // Retourner true pour continuer
+      }
     }
     
-    // APPROCHE RADICALE : Créer la table directement avec une requête SQL brute
-    console.log('[USERPG] Création directe de la table User avec requête SQL brute');
-    
-    // Sur NeonDB, essayer d'abord avec uuid_generate_v4 qui est plus compatible
-    try {
-      console.log('[USERPG] Création de la table User avec uuid_generate_v4() (NeonDB)');
-      await sequelize.query(`
-        CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-        CREATE TABLE IF NOT EXISTS "User" (
-          id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-          username VARCHAR(255) NOT NULL UNIQUE,
-          email VARCHAR(255) NOT NULL UNIQUE,
-          password VARCHAR(255) NOT NULL,
-          "isAdmin" BOOLEAN DEFAULT false,
-          "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-          "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
-        );
-      `);
-      console.log('[USERPG] Table User créée avec uuid_generate_v4() pour NeonDB');
-    } catch (uuidOsspError) {
-      console.error('[USERPG] Erreur avec uuid_generate_v4():', uuidOsspError);
+    // OPTIMISATION: Créer la table seulement si elle n'existe pas, avec timeout court
+    if (!tableExists) {
+      console.log('[USERPG] Table User non trouvée, tentative de création avec timeout court');
       
-      // Deuxième tentative avec gen_random_uuid
+      // Une seule tentative rapide avec timeout très court (1 seconde max)
       try {
-        console.log('[USERPG] Tentative avec gen_random_uuid()');
-        await sequelize.query(`
-          CREATE TABLE IF NOT EXISTS "User" (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            username VARCHAR(255) NOT NULL UNIQUE,
-            email VARCHAR(255) NOT NULL UNIQUE,
-            password VARCHAR(255) NOT NULL,
-            "isAdmin" BOOLEAN DEFAULT false,
-            "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-            "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
-          );
-        `);
-        console.log('[USERPG] Table User créée avec gen_random_uuid()');
-      } catch (genUuidError) {
-        console.error('[USERPG] Erreur avec gen_random_uuid():', genUuidError);
-        
-        // Dernière tentative avec une méthode basique
-        try {
-          console.log('[USERPG] Création avec méthode basique');
-          await sequelize.query(`
+        await Promise.race([
+          sequelize.query(`
             CREATE TABLE IF NOT EXISTS "User" (
-              id VARCHAR(36) PRIMARY KEY,
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
               username VARCHAR(255) NOT NULL UNIQUE,
               email VARCHAR(255) NOT NULL UNIQUE,
               password VARCHAR(255) NOT NULL,
               "isAdmin" BOOLEAN DEFAULT false,
-              "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
-              "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
+              "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+              "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
             );
-          `);
-          console.log('[USERPG] Table User créée avec méthode basique');
-        } catch (basicError) {
-          console.error('[USERPG] Échec de toutes les méthodes de création de table:', basicError);
-          throw basicError; // Remonter l'erreur pour traitement global
-        }
+          `),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Create table timeout')), 1000))
+        ]);
+        console.log('[USERPG] Table User créée avec succès');
+      } catch (createError) {
+        console.warn('[USERPG] Création de table timeout/échouée (non bloquant):', createError.message);
+        // Ne pas bloquer - la table sera créée à la première utilisation
+        console.log('[USERPG] Table sera créée automatiquement à la première utilisation');
+        // Activer le mode mémoire temporairement
+        isUsingMemoryMode = true;
+        return true; // Retourner true pour permettre la continuation
       }
     }
     
-    // Maintenant essayer la méthode Sequelize standard
+    // OPTIMISATION: Synchronisation rapide avec timeout
     const model = getUserModel();
-    if (!model) {
-      console.log('[USERPG] Échec de création du modèle User');
-      return false;
+    if (model && !isUsingMemoryMode) {
+      try {
+        // Timeout très court pour la synchronisation
+        await Promise.race([
+          model.sync({ force: false, alter: true }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Sync timeout')), 1000))
+        ]);
+        console.log('[USERPG] Table User synchronisée avec succès');
+        return true;
+      } catch (syncError) {
+        console.warn('[USERPG] Synchronisation ignorée (timeout ou erreur):', syncError.message);
+        // Continuer malgré l'erreur, la table existe peut-être déjà
+        return true;
+      }
     }
     
-    try {
-      // Force synchroniser le modèle
-      console.log(`[USERPG] Synchronisation du modèle User (force=${force})`);
-      await model.sync({ force: false, alter: true }); // Utiliser alter au lieu de force
-      console.log('[USERPG] Table User synchronisée avec succès');
-      return true;
-    } catch (error) {
-      console.error('[USERPG] Erreur lors de la synchronisation:', error);
-      // Renvoyer true quand même car la table a peut-être été créée manuellement
-      return true;
-    }
+    return true;
   } catch (error) {
     console.error('[USERPG] Erreur globale lors de l\'initialisation du modèle User:', error);
     console.log('[USERPG] Activation du mode mémoire suite à une erreur');

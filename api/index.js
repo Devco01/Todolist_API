@@ -70,7 +70,20 @@ const initDatabases = async () => {
     // CRITIQUE: Ne JAMAIS utiliser force=true en production pour éviter la perte de données !
     console.log('Initialisation du modèle User...');
     const forceUserSync = process.env.FORCE_SYNC === 'true' && process.env.NODE_ENV !== 'production';
-    await initUserModel(forceUserSync);
+    
+    // OPTIMISATION: Timeout très court pour éviter les timeouts Vercel (10s max)
+    try {
+      await Promise.race([
+        initUserModel(forceUserSync),
+        new Promise((resolve) => setTimeout(() => {
+          console.warn('Initialisation User timeout - continuation en mode mémoire');
+          resolve(false);
+        }, 2000)) // Max 2 secondes pour l'initialisation
+      ]);
+    } catch (userInitError) {
+      console.error('Erreur lors de l\'initialisation du modèle User (non bloquant):', userInitError.message);
+      // Ne pas bloquer, continuer en mode mémoire
+    }
     
     // Synchroniser le modèle Todo uniquement si PostgreSQL est connecté
     if (pgConnected) {
