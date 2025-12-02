@@ -400,11 +400,17 @@ const syncUserModel = async (force = false) => {
   }
   
   try {
-    // Forcer la création de la table
-    const forceSync = process.env.FORCE_SYNC === 'true' || force;
-    console.log(`[USERPG] Synchronisation du modèle avec force=${forceSync}`);
+    // CRITIQUE: Ne JAMAIS utiliser forceSync en production - cela supprime toutes les données !
+    const forceSync = (process.env.FORCE_SYNC === 'true' || force) && process.env.NODE_ENV !== 'production';
     
-    await model.sync({ force: forceSync });
+    if (forceSync) {
+      console.warn(`[USERPG] ⚠️ ATTENTION: ForceSync activé - Cela supprimera toutes les données !`);
+    } else {
+      console.log(`[USERPG] Mode sécurisé: Synchronisation avec alter (force=${forceSync})`);
+    }
+    
+    // Utiliser alter au lieu de force pour préserver les données
+    await model.sync({ force: false, alter: !forceSync });
     console.log('[USERPG] Modèle User synchronisé avec la base de données');
     return true;
   } catch (error) {

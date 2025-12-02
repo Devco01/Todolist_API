@@ -296,9 +296,15 @@ const syncTodoModel = async (force = false) => {
       // Continuer avec la création
     }
     
-    // Synchroniser le modèle avec force si nécessaire
-    const forceSync = process.env.FORCE_SYNC === 'true' || force;
-    console.log(`[TODOPG] Synchronisation avec force=${forceSync}`);
+    // CRITIQUE: Ne JAMAIS utiliser forceSync en production - cela supprime toutes les données !
+    // ForceSync ne doit être utilisé qu'en développement local explicitement
+    const forceSync = (process.env.FORCE_SYNC === 'true' || force) && process.env.NODE_ENV !== 'production';
+    
+    if (forceSync) {
+      console.warn(`[TODOPG] ⚠️ ATTENTION: ForceSync activé - Cela supprimera toutes les données !`);
+    } else {
+      console.log(`[TODOPG] Mode sécurisé: Synchronisation avec alter (force=${forceSync})`);
+    }
     
     // Tenter de créer la table manuellement avant la synchronisation
     try {
@@ -401,9 +407,19 @@ const syncTodoModel = async (force = false) => {
     } catch (syncError) {
       console.error('[TODOPG] Erreur lors de la synchronisation alter:', syncError);
       
-      // Essayer avec force en dernier recours
+      // CRITIQUE: Ne JAMAIS utiliser force=true en production - cela supprime toutes les données !
+      // En production, nous préférons échouer plutôt que de perdre des données
+      if (process.env.NODE_ENV === 'production') {
+        console.error('[TODOPG] ❌ ERREUR: Impossible de synchroniser en production sans perdre de données');
+        console.error('[TODOPG] La table existe mais la synchronisation alter a échoué');
+        console.error('[TODOPG] Solution: Utiliser des migrations manuelles plutôt que sync');
+        return false;
+      }
+      
+      // En développement seulement, utiliser force en dernier recours
       try {
-        console.log('[TODOPG] Tentative avec force=true comme dernier recours');
+        console.warn('[TODOPG] ⚠️ ATTENTION: Tentative avec force=true (DÉVELOPPEMENT UNIQUEMENT)');
+        console.warn('[TODOPG] ⚠️ Cela supprimera toutes les données de la table Todo !');
         await Todo.sync({ force: true });
         console.log('[TODOPG] Modèle Todo synchronisé avec force=true');
         return true;

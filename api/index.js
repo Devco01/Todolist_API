@@ -67,13 +67,17 @@ const initDatabases = async () => {
     }
     
     // Initialiser les modèles (avec ou sans mode mémoire)
+    // CRITIQUE: Ne JAMAIS utiliser force=true en production pour éviter la perte de données !
     console.log('Initialisation du modèle User...');
-    await initUserModel(true);
+    const forceUserSync = process.env.FORCE_SYNC === 'true' && process.env.NODE_ENV !== 'production';
+    await initUserModel(forceUserSync);
     
     // Synchroniser le modèle Todo uniquement si PostgreSQL est connecté
     if (pgConnected) {
       console.log('Initialisation et synchronisation du modèle Todo...');
-      const todoSynced = await syncTodoModel(true);
+      // CRITIQUE: Ne JAMAIS utiliser force=true en production pour éviter la perte de données !
+      const forceTodoSync = process.env.FORCE_SYNC === 'true' && process.env.NODE_ENV !== 'production';
+      const todoSynced = await syncTodoModel(forceTodoSync);
       console.log('Synchronisation du modèle Todo:', todoSynced ? 'Réussie' : 'Échouée');
     }
     
