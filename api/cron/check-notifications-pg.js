@@ -171,14 +171,22 @@ module.exports = async (req, res) => {
       }
     }
     
-    // Se connecter à PostgreSQL
-    const sequelize = await connectPostgres();
+    // CRITIQUE: Réutiliser la connexion existante pour éviter les reconnexions
+    // Le cron s'exécute tous les jours, pas besoin de recréer la connexion à chaque fois
+    let sequelize = getSequelize();
     if (!sequelize) {
-      return res.status(200).json({
-        success: false,
-        message: 'Échec de connexion à PostgreSQL',
-        timestamp: new Date().toISOString()
-      });
+      // Seulement si pas de connexion existante, en créer une
+      const connected = await connectPostgres();
+      if (!connected) {
+        return res.status(200).json({
+          success: false,
+          message: 'Échec de connexion à PostgreSQL',
+          timestamp: new Date().toISOString()
+        });
+      }
+      sequelize = getSequelize();
+    } else {
+      console.log('[CRON-PG] Réutilisation de la connexion PostgreSQL existante');
     }
     
     // Vérifier si la table Todo existe
