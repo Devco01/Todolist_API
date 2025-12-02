@@ -14,7 +14,7 @@ const ensureUserModelReady = async (req, res, next) => {
     // OPTIMISATION: Ne pas vérifier la connexion DB ici pour éviter les timeouts
     // On laisse les routes gérer la vérification DB si nécessaire
     // Juste vérifier que le modèle existe (même en mode mémoire)
-    const UserModel = getUserModel();
+    let UserModel = getUserModel();
     if (!UserModel) {
       console.warn('[AUTH-ROUTE] Modèle User non disponible, tentative d\'initialisation rapide...');
       
@@ -24,14 +24,13 @@ const ensureUserModelReady = async (req, res, next) => {
           initUserModel(false),
           new Promise((resolve) => setTimeout(() => resolve(true), 1000)) // Max 1 seconde
         ]);
+        // Réessayer d'obtenir le modèle après initialisation
+        UserModel = getUserModel();
       } catch (initError) {
         console.warn('[AUTH-ROUTE] Erreur lors de l\'initialisation rapide:', initError.message);
         // Continuer quand même, le mode mémoire sera utilisé
       }
     }
-    
-    // Essayer d'obtenir le modèle User (peut retourner un modèle mémoire si DB indisponible)
-    let UserModel = getUserModel();
     
     // Si pas de modèle et DB disponible, essayer d'initialiser
     if (!UserModel && dbAvailable) {
