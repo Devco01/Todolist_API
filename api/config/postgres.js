@@ -141,16 +141,31 @@ const connectPostgres = async (force = false) => {
         console.log('[PG] Instance Sequelize créée pour NeonDB');
         
         // Gestionnaire d'événements pour les erreurs de connexion (sans recréation automatique)
-        sequelize.connectionManager.pool.on('error', (err) => {
-          console.error('[PG] Erreur dans le pool de connexions:', err.message);
-          // NE PAS réinitialiser automatiquement pour éviter les boucles
-        });
+        // Le pool n'existe pas encore au moment de la création, donc on attend qu'il soit créé
+        try {
+          // Le pool sera créé lors de la première connexion
+          // On ajoutera le gestionnaire après l'authentification
+        } catch (poolError) {
+          console.warn('[PG] Impossible d\'ajouter le gestionnaire d\'événements du pool:', poolError.message);
+        }
       }
       
       // Vérifier la connexion (UNIQUEMENT UNE FOIS, pas de retry en boucle)
       try {
         await sequelize.authenticate();
         console.log('[PG] Connexion à PostgreSQL (NeonDB) établie avec succès');
+        
+        // Ajouter le gestionnaire d'événements du pool après authentification (pool créé)
+        try {
+          if (sequelize.connectionManager && sequelize.connectionManager.pool) {
+            sequelize.connectionManager.pool.on('error', (err) => {
+              console.error('[PG] Erreur dans le pool de connexions:', err.message);
+              // NE PAS réinitialiser automatiquement pour éviter les boucles
+            });
+          }
+        } catch (poolHandlerError) {
+          console.warn('[PG] Impossible d\'ajouter le gestionnaire d\'événements du pool:', poolHandlerError.message);
+        }
         
         // Réinitialiser le compteur de retry en cas de succès
         connectionRetryCount = 0;
