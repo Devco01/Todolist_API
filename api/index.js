@@ -104,6 +104,48 @@ app.use('/api/auth', authRoutes);
 app.use('/api/notifications', notificationPgRoutes); // PostgreSQL
 app.use('/api/keep-alive', keepAliveRoutes);
 
+// Middleware de gestion d'erreur global - DOIT être après toutes les routes
+app.use((err, req, res, next) => {
+  console.error('=== ERREUR GLOBALE ATTRAPÉE ===');
+  console.error('URL:', req.url);
+  console.error('Method:', req.method);
+  console.error('Error name:', err.name);
+  console.error('Error message:', err.message);
+  console.error('Error stack:', err.stack);
+  console.error('================================');
+  
+  // Ne pas renvoyer 500 pour les erreurs de connexion DB
+  if (err.name === 'SequelizeConnectionError' || 
+      err.name === 'SequelizeConnectionRefusedError' ||
+      err.message?.includes('connection') ||
+      err.message?.includes('Connection') ||
+      err.message?.includes('non disponible')) {
+    return res.status(503).json({
+      success: false,
+      error: 'Service temporairement indisponible',
+      message: 'La base de données n\'est pas accessible pour le moment. Veuillez réessayer dans quelques instants.',
+      dbAvailable: false
+    });
+  }
+  
+  // Par défaut, retourner 500
+  res.status(500).json({
+    success: false,
+    error: 'Erreur interne du serveur',
+    message: process.env.NODE_ENV === 'development' ? err.message : 'Une erreur inattendue s\'est produite',
+    errorType: err.name || 'UnknownError'
+  });
+});
+
+// 404 handler - DOIT être le dernier
+app.use((req, res) => {
+  res.status(404).json({ 
+    success: false,
+    error: 'Route non trouvée',
+    path: req.path
+  });
+});
+
 // Pour le déploiement Vercel
 const PORT = process.env.PORT || 3000;
 

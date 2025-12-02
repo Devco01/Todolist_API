@@ -377,17 +377,25 @@ router.post('/login', ensureUserModelReady, async (req, res) => {
     // Connecter l'utilisateur
     let result;
     try {
+      console.log('[AUTH-ROUTE] Appel à authService.loginUser...');
       result = await authService.loginUser(username, password);
       console.log('[AUTH-ROUTE] Connexion réussie pour:', username);
     } catch (loginError) {
-      console.error('[AUTH-ROUTE] Erreur lors de l\'authentification:', loginError);
+      console.error('[AUTH-ROUTE] === ERREUR DÉTAILLÉE DANS LOGIN ===');
+      console.error('[AUTH-ROUTE] Error name:', loginError?.name);
+      console.error('[AUTH-ROUTE] Error message:', loginError?.message);
+      console.error('[AUTH-ROUTE] Error stack:', loginError?.stack);
+      console.error('[AUTH-ROUTE] ====================================');
       
       // Gérer les erreurs de connexion DB qui peuvent survenir pendant loginUser
-      if (loginError.name === 'SequelizeConnectionError' || 
-          loginError.name === 'SequelizeConnectionRefusedError' ||
-          loginError.message?.includes('connection') ||
-          loginError.message?.includes('Connection') ||
-          loginError.message?.includes('non disponible')) {
+      if (loginError?.name === 'SequelizeConnectionError' || 
+          loginError?.name === 'SequelizeConnectionRefusedError' ||
+          loginError?.name === 'SequelizeHostNotFoundError' ||
+          loginError?.message?.includes('connection') ||
+          loginError?.message?.includes('Connection') ||
+          loginError?.message?.includes('non disponible') ||
+          loginError?.message?.includes('Base de données non disponible')) {
+        console.error('[AUTH-ROUTE] Erreur de connexion DB détectée');
         return res.status(503).json({
           success: false,
           message: 'Service temporairement indisponible',
@@ -397,23 +405,22 @@ router.post('/login', ensureUserModelReady, async (req, res) => {
       }
       
       // Erreurs d'authentification (utilisateur non trouvé, mot de passe incorrect)
-      if (loginError.message?.includes('non trouvé') || 
-          loginError.message?.includes('incorrect') ||
-          loginError.message?.includes('not found') ||
-          loginError.message?.includes('password')) {
+      if (loginError?.message?.includes('non trouvé') || 
+          loginError?.message?.includes('incorrect') ||
+          loginError?.message?.includes('not found') ||
+          loginError?.message?.includes('password') ||
+          loginError?.message?.includes('Mot de passe')) {
+        console.error('[AUTH-ROUTE] Erreur d\'authentification détectée');
         return res.status(401).json({
           success: false,
           message: loginError.message || 'Identifiants incorrects'
         });
       }
       
-      // Erreurs inattendues
-      console.error('[AUTH-ROUTE] Erreur inattendue lors de la connexion:', loginError);
-      return res.status(500).json({
-        success: false,
-        message: 'Erreur lors de la connexion',
-        details: loginError.message || 'Une erreur inattendue s\'est produite'
-      });
+      // Relancer l'erreur pour que le gestionnaire global la catch
+      // Cela permet au middleware global de gérer l'erreur si on arrive ici
+      console.error('[AUTH-ROUTE] Relance de l\'erreur vers le gestionnaire global');
+      throw loginError; // Relancer pour que le catch global le gère
     }
     
     // Définir le token dans un cookie
@@ -451,20 +458,29 @@ router.post('/login', ensureUserModelReady, async (req, res) => {
       });
     }
     
-    // Par défaut, retourner 500 avec un message générique
     // Log détaillé de l'erreur pour le débogage
     console.error('[AUTH-ROUTE] === ERREUR DÉTAILLÉE ===');
-    console.error('[AUTH-ROUTE] Error name:', error.name);
-    console.error('[AUTH-ROUTE] Error message:', error.message);
-    console.error('[AUTH-ROUTE] Error stack:', error.stack);
+    console.error('[AUTH-ROUTE] Error name:', error?.name);
+    console.error('[AUTH-ROUTE] Error message:', error?.message);
+    console.error('[AUTH-ROUTE] Error stack:', error?.stack);
     console.error('[AUTH-ROUTE] ========================');
     
-    return res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la connexion',
-      details: error.message || 'Une erreur inattendue s\'est produite',
-      errorType: error.name || 'UnknownError'
-    });
+    // Gérer les erreurs de connexion DB même dans le catch externe
+    if (error?.name === 'SequelizeConnectionError' || 
+        error?.name === 'SequelizeConnectionRefusedError' ||
+        error?.message?.includes('connection') ||
+        error?.message?.includes('non disponible')) {
+      return res.status(503).json({
+        success: false,
+        message: 'Service temporairement indisponible',
+        details: 'La base de données n\'est pas accessible pour le moment.'
+      });
+    }
+    
+    // Relancer l'erreur pour que le gestionnaire global la catch
+    // Cela permet au middleware global de formater la réponse
+    console.error('[AUTH-ROUTE] Relance de l\'erreur vers le gestionnaire global');
+    throw error; // Relancer pour que le gestionnaire global le gère
   }
 });
 
