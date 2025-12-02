@@ -567,30 +567,66 @@ const deleteTodo = async (id, userId = null) => {
 // Récupérer les tâches avec notifications non envoyées
 const getTodosWithPendingNotifications = async () => {
   try {
+    // Vérifier si la connexion DB est disponible avant d'essayer
+    const sequelize = getSequelize();
+    if (!sequelize) {
+      console.log('[TODOPG] getTodosWithPendingNotifications: Pas de connexion DB, utilisation mémoire');
+      return inMemoryTodos.filter(todo => 
+        todo.notificationsEnabled && 
+        !todo.completed && 
+        todo.dueDate);
+    }
+    
+    // Tester la connexion
+    try {
+      await sequelize.authenticate();
+    } catch (authError) {
+      console.warn('[TODOPG] getTodosWithPendingNotifications: Connexion DB non disponible:', authError.message);
+      return inMemoryTodos.filter(todo => 
+        todo.notificationsEnabled && 
+        !todo.completed && 
+        todo.dueDate);
+    }
+    
     if (isModelAvailable()) {
       const TodoModel = getTodoModel();
       
       // Trouver tous les todos non complétés avec notifications activées
       // Même si notificationSent=true, on inclut les tâches pour vérification
-      const todos = await TodoModel.findAll({
-        where: {
-          notificationsEnabled: true,
-          completed: false,
-          dueDate: { [Op.not]: null }
-        }
-      });
-      
-      return todos;
+      try {
+        const todos = await TodoModel.findAll({
+          where: {
+            notificationsEnabled: true,
+            completed: false,
+            dueDate: { [Op.not]: null }
+          }
+        });
+        
+        console.log(`[TODOPG] getTodosWithPendingNotifications: ${todos.length} tâches trouvées`);
+        return todos;
+      } catch (queryError) {
+        console.error('[TODOPG] Erreur lors de la requête findAll:', queryError.message);
+        // Fallback sur mémoire en cas d'erreur de requête
+        return inMemoryTodos.filter(todo => 
+          todo.notificationsEnabled && 
+          !todo.completed && 
+          todo.dueDate);
+      }
     } else {
       // Filtrer les todos en mémoire
+      console.log('[TODOPG] getTodosWithPendingNotifications: Modèle non disponible, utilisation mémoire');
       return inMemoryTodos.filter(todo => 
         todo.notificationsEnabled && 
         !todo.completed && 
         todo.dueDate);
     }
   } catch (error) {
-    console.error('Erreur lors de la récupération des todos avec notifications:', error);
-    return [];
+    console.error('[TODOPG] Erreur lors de la récupération des todos avec notifications:', error.message);
+    // Toujours retourner un tableau vide plutôt que de lancer une erreur
+    return inMemoryTodos.filter(todo => 
+      todo.notificationsEnabled && 
+      !todo.completed && 
+      todo.dueDate) || [];
   }
 };
 

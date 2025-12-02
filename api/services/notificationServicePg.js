@@ -68,9 +68,32 @@ const checkTasksForNotification = async () => {
   try {
     console.log('Vérification des tâches pour les notifications (échéance dans les prochaines 24h)...');
 
+    // Vérifier si la base de données est accessible
+    const { getSequelize } = require('../config/postgres');
+    const sequelize = getSequelize();
+    
+    if (!sequelize) {
+      console.warn('[NOTIFICATION-SERVICE] Base de données non disponible, aucune vérification possible');
+      return 0;
+    }
+    
+    // Tester la connexion
+    try {
+      await sequelize.authenticate();
+    } catch (authError) {
+      console.warn('[NOTIFICATION-SERVICE] Connexion DB non disponible:', authError.message);
+      return 0;
+    }
+
     // Récupérer toutes les tâches avec notifications activées
-    const todos = await todoPgService.getTodosWithPendingNotifications();
-    console.log(`${todos.length} tâches trouvées avec notifications activées`);
+    let todos = [];
+    try {
+      todos = await todoPgService.getTodosWithPendingNotifications();
+      console.log(`${todos.length} tâches trouvées avec notifications activées`);
+    } catch (fetchError) {
+      console.error('[NOTIFICATION-SERVICE] Erreur lors de la récupération des tâches:', fetchError.message);
+      return 0;
+    }
 
     let countReadyForNotification = 0;
 
@@ -78,20 +101,21 @@ const checkTasksForNotification = async () => {
     for (const todo of todos) {
       try {
         // Si la tâche doit être notifiée, la marquer pour notification
-        if (todo.shouldNotify && todo.shouldNotify()) {
+        if (todo.shouldNotify && typeof todo.shouldNotify === 'function' && todo.shouldNotify()) {
           countReadyForNotification++;
           console.log(`Tâche "${todo.title}" prête pour notification (date: ${todo.dueDate}, heure: ${todo.dueTime || '00:00'})`);
         }
       } catch (err) {
-        console.error(`Erreur lors de la vérification de la tâche ${todo.id}:`, err);
+        console.error(`Erreur lors de la vérification de la tâche ${todo.id}:`, err.message);
       }
     }
 
     console.log(`${countReadyForNotification} tâches prêtes pour notification`);
     return countReadyForNotification;
   } catch (error) {
-    console.error('Erreur lors de la vérification des tâches pour notifications:', error);
-    throw error;
+    console.error('[NOTIFICATION-SERVICE] Erreur lors de la vérification des tâches pour notifications:', error.message);
+    // Ne pas lancer l'erreur, retourner 0 pour éviter de faire planter l'appelant
+    return 0;
   }
 };
 
@@ -102,8 +126,51 @@ const sendPendingNotifications = async () => {
   try {
     console.log('Envoi des notifications en attente...');
 
+    // Vérifier si la base de données est accessible
+    const { getSequelize } = require('../config/postgres');
+    const sequelize = getSequelize();
+    
+    if (!sequelize) {
+      console.warn('[NOTIFICATION-SERVICE] Base de données non disponible, aucun envoi possible');
+      return {
+        total: 0,
+        sent: 0,
+        errors: 0,
+        details: [],
+        note: 'Base de données non disponible'
+      };
+    }
+    
+    // Tester la connexion
+    try {
+      await sequelize.authenticate();
+    } catch (authError) {
+      console.warn('[NOTIFICATION-SERVICE] Connexion DB non disponible:', authError.message);
+      return {
+        total: 0,
+        sent: 0,
+        errors: 0,
+        details: [],
+        note: 'Connexion DB non disponible'
+      };
+    }
+
     // Récupérer toutes les tâches avec notifications activées
-    const todos = await todoPgService.getTodosWithPendingNotifications();
+    let todos = [];
+    try {
+      todos = await todoPgService.getTodosWithPendingNotifications();
+    } catch (fetchError) {
+      console.error('[NOTIFICATION-SERVICE] Erreur lors de la récupération des tâches:', fetchError.message);
+      return {
+        total: 0,
+        sent: 0,
+        errors: 1,
+        details: [{
+          status: 'error',
+          message: fetchError.message
+        }]
+      };
+    }
     
     const results = {
       total: todos.length,
