@@ -140,6 +140,24 @@ const loginUser = async (username, password) => {
   try {
     console.log('[AUTH] Tentative de connexion pour l\'utilisateur:', username);
     
+    // Vérifier la connexion DB avant de continuer
+    const sequelize = getSequelize();
+    if (!sequelize) {
+      console.error('[AUTH] Connexion DB non disponible');
+      throw new Error('Base de données non disponible');
+    }
+    
+    // Tester la connexion avec timeout
+    try {
+      await Promise.race([
+        sequelize.authenticate(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
+      ]);
+    } catch (authError) {
+      console.error('[AUTH] Erreur de connexion DB:', authError.message);
+      throw new Error('Base de données non disponible');
+    }
+    
     const UserModel = getUserModel();
     if (!UserModel) {
       console.error('[AUTH] Modèle utilisateur non disponible');
@@ -235,7 +253,12 @@ const loginUser = async (username, password) => {
     // Vérifier le mot de passe
     let isPasswordValid = false;
     try {
-      isPasswordValid = await user.comparePassword(password);
+      if (typeof user.comparePassword === 'function') {
+        isPasswordValid = await user.comparePassword(password);
+      } else {
+        // Si comparePassword n'existe pas, utiliser bcrypt directement
+        isPasswordValid = await bcrypt.compare(password, user.password);
+      }
     } catch (compareError) {
       console.error('[AUTH] Erreur lors de la vérification du mot de passe:', compareError);
       
@@ -244,6 +267,7 @@ const loginUser = async (username, password) => {
         isPasswordValid = await bcrypt.compare(password, user.password);
       } catch (bcryptError) {
         console.error('[AUTH] Échec également de bcrypt.compare:', bcryptError);
+        throw new Error('Erreur lors de la vérification du mot de passe');
       }
     }
     

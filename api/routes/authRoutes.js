@@ -297,10 +297,77 @@ router.post('/login', ensureUserModelReady, async (req, res) => {
       });
     }
     
-    // Connecter l'utilisateur
-    const result = await authService.loginUser(username, password);
+    // Vérifier si la base de données est accessible
+    const { getSequelize } = require('../config/postgres');
+    const sequelize = getSequelize();
+    let dbAvailable = false;
     
-    console.log('[AUTH-ROUTE] Connexion réussie pour:', username);
+    if (sequelize) {
+      try {
+        await Promise.race([
+          sequelize.authenticate(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
+        ]);
+        dbAvailable = true;
+        console.log('[AUTH-ROUTE] Connexion DB disponible');
+      } catch (dbError) {
+        console.warn('[AUTH-ROUTE] Connexion DB non disponible:', dbError.message);
+        dbAvailable = false;
+      }
+    }
+    
+    // Si la DB n'est pas disponible, retourner une erreur explicite
+    if (!dbAvailable) {
+      console.error('[AUTH-ROUTE] Base de données non disponible pour la connexion');
+      return res.status(503).json({
+        success: false,
+        message: 'Service temporairement indisponible',
+        details: 'La base de données n\'est pas accessible pour le moment. Veuillez réessayer dans quelques instants.',
+        dbAvailable: false
+      });
+    }
+    
+    // Connecter l'utilisateur
+    let result;
+    try {
+      result = await authService.loginUser(username, password);
+      console.log('[AUTH-ROUTE] Connexion réussie pour:', username);
+    } catch (loginError) {
+      console.error('[AUTH-ROUTE] Erreur lors de l\'authentification:', loginError);
+      
+      // Gérer les erreurs de connexion DB qui peuvent survenir pendant loginUser
+      if (loginError.name === 'SequelizeConnectionError' || 
+          loginError.name === 'SequelizeConnectionRefusedError' ||
+          loginError.message?.includes('connection') ||
+          loginError.message?.includes('Connection') ||
+          loginError.message?.includes('non disponible')) {
+        return res.status(503).json({
+          success: false,
+          message: 'Service temporairement indisponible',
+          details: 'La base de données n\'est pas accessible pour le moment. Veuillez réessayer dans quelques instants.',
+          dbAvailable: false
+        });
+      }
+      
+      // Erreurs d'authentification (utilisateur non trouvé, mot de passe incorrect)
+      if (loginError.message?.includes('non trouvé') || 
+          loginError.message?.includes('incorrect') ||
+          loginError.message?.includes('not found') ||
+          loginError.message?.includes('password')) {
+        return res.status(401).json({
+          success: false,
+          message: loginError.message || 'Identifiants incorrects'
+        });
+      }
+      
+      // Erreurs inattendues
+      console.error('[AUTH-ROUTE] Erreur inattendue lors de la connexion:', loginError);
+      return res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la connexion',
+        details: loginError.message || 'Une erreur inattendue s\'est produite'
+      });
+    }
     
     // Définir le token dans un cookie
     res.cookie('token', result.token, {
@@ -316,10 +383,32 @@ router.post('/login', ensureUserModelReady, async (req, res) => {
       token: result.token
     });
   } catch (error) {
-    console.error('[AUTH-ROUTE] Erreur lors de la connexion:', error);
-    res.status(401).json({
+    console.error('[AUTH-ROUTE] Erreur inattendue dans le handler login:', error);
+    
+    // Si l'erreur vient du middleware ensureUserModelReady
+    if (error.message?.includes('temporairement indisponible')) {
+      return res.status(503).json({
+        success: false,
+        message: 'Service temporairement indisponible',
+        details: error.message
+      });
+    }
+    
+    // Erreurs d'authentification
+    if (error.message?.includes('non trouvé') || 
+        error.message?.includes('incorrect') ||
+        error.message?.includes('Identifiants')) {
+      return res.status(401).json({
+        success: false,
+        message: error.message || 'Identifiants incorrects'
+      });
+    }
+    
+    // Par défaut, retourner 500 avec un message générique
+    return res.status(500).json({
       success: false,
-      message: error.message || 'Identifiants incorrects'
+      message: 'Erreur lors de la connexion',
+      details: error.message || 'Une erreur inattendue s\'est produite'
     });
   }
 });
