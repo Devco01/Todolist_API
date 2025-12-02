@@ -10,28 +10,72 @@ authService.initAuthService();
 // Middleware qui vérifie que le modèle User est prêt
 const ensureUserModelReady = async (req, res, next) => {
   try {
-    const UserModel = getUserModel();
-    if (!UserModel) {
-      console.error('[AUTH-ROUTE] Modèle User non disponible, tentative d\'initialisation...');
-      
-      // Tenter d'initialiser le modèle en urgence
-      const initSuccess = await initUserModel(true);
-      if (!initSuccess) {
-        return res.status(500).json({
-          success: false,
-          message: 'Service d\'authentification temporairement indisponible, veuillez réessayer'
-        });
+    // Vérifier si la connexion DB est disponible d'abord
+    const { getSequelize } = require('../config/postgres');
+    const sequelize = getSequelize();
+    let dbAvailable = false;
+    
+    if (sequelize) {
+      try {
+        await Promise.race([
+          sequelize.authenticate(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2000))
+        ]);
+        dbAvailable = true;
+      } catch (dbError) {
+        console.warn('[AUTH-ROUTE] Connexion DB non disponible dans middleware:', dbError.message);
+        dbAvailable = false;
       }
     }
     
-    // Si nous arrivons ici, le modèle est disponible
+    // Essayer d'obtenir le modèle User (peut retourner un modèle mémoire si DB indisponible)
+    let UserModel = getUserModel();
+    
+    // Si pas de modèle et DB disponible, essayer d'initialiser
+    if (!UserModel && dbAvailable) {
+      console.log('[AUTH-ROUTE] Modèle User non disponible, tentative d\'initialisation...');
+      
+      try {
+        // Tenter d'initialiser le modèle (avec timeout pour éviter les blocages)
+        const initPromise = initUserModel(false); // Ne pas forcer
+        const initSuccess = await Promise.race([
+          initPromise,
+          new Promise((resolve) => setTimeout(() => resolve(true), 3000)) // Timeout 3s
+        ]);
+        
+        // Réessayer d'obtenir le modèle après initialisation
+        UserModel = getUserModel();
+        
+        if (!UserModel) {
+          console.warn('[AUTH-ROUTE] Modèle User toujours non disponible après initialisation, utilisation mode mémoire');
+        }
+      } catch (initError) {
+        console.error('[AUTH-ROUTE] Erreur lors de l\'initialisation du modèle:', initError.message);
+        // Continuer quand même, le mode mémoire sera utilisé
+      }
+    }
+    
+    // Si toujours pas de modèle, getUserModel devrait retourner un modèle mémoire
+    if (!UserModel) {
+      console.warn('[AUTH-ROUTE] Aucun modèle User disponible, tentative de récupération du modèle mémoire...');
+      UserModel = getUserModel(); // Réessayer, devrait retourner modèle mémoire
+    }
+    
+    // Si on a toujours rien, ce n'est pas normal mais on continue quand même
+    // Le code en aval gérera l'erreur si nécessaire
+    if (!UserModel) {
+      console.error('[AUTH-ROUTE] ⚠️ Aucun modèle User disponible (ni DB ni mémoire)');
+      // Ne pas retourner 500, laisser passer et gérer l'erreur dans la route
+    }
+    
+    // Toujours passer au suivant, même si le modèle n'est pas optimal
+    // La route login gérera les erreurs spécifiques
     next();
   } catch (error) {
-    console.error('[AUTH-ROUTE] Erreur lors de la vérification du modèle User:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Erreur interne du service d\'authentification'
-    });
+    console.error('[AUTH-ROUTE] Erreur inattendue dans ensureUserModelReady:', error);
+    // Ne pas bloquer la requête, laisser la route gérer l'erreur
+    // Cela permet au mode mémoire de fonctionner même en cas d'erreur
+    next();
   }
 };
 
@@ -278,9 +322,12 @@ async function listTables(sequelize) {
  * @access  Public
  */
 router.post('/login', ensureUserModelReady, async (req, res) => {
+  console.log('[AUTH-ROUTE] === DÉBUT DE LA ROUTE LOGIN ===');
   try {
     console.log('[AUTH-ROUTE] Requête de connexion reçue');
     const { username, password } = req.body;
+    
+    console.log('[AUTH-ROUTE] Middleware ensureUserModelReady passé avec succès');
     
     console.log('[AUTH-ROUTE] Tentative de connexion pour:', username);
     
@@ -405,10 +452,18 @@ router.post('/login', ensureUserModelReady, async (req, res) => {
     }
     
     // Par défaut, retourner 500 avec un message générique
+    // Log détaillé de l'erreur pour le débogage
+    console.error('[AUTH-ROUTE] === ERREUR DÉTAILLÉE ===');
+    console.error('[AUTH-ROUTE] Error name:', error.name);
+    console.error('[AUTH-ROUTE] Error message:', error.message);
+    console.error('[AUTH-ROUTE] Error stack:', error.stack);
+    console.error('[AUTH-ROUTE] ========================');
+    
     return res.status(500).json({
       success: false,
       message: 'Erreur lors de la connexion',
-      details: error.message || 'Une erreur inattendue s\'est produite'
+      details: error.message || 'Une erreur inattendue s\'est produite',
+      errorType: error.name || 'UnknownError'
     });
   }
 });
