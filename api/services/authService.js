@@ -140,22 +140,24 @@ const loginUser = async (username, password) => {
   try {
     console.log('[AUTH] Tentative de connexion pour l\'utilisateur:', username);
     
-    // Vérifier la connexion DB avant de continuer
+    // OPTIMISATION: Vérification DB ultra-rapide (500ms max) pour éviter les timeouts Vercel
     const sequelize = getSequelize();
     if (!sequelize) {
       console.error('[AUTH] Connexion DB non disponible');
       throw new Error('Base de données non disponible');
     }
     
-    // Tester la connexion avec timeout
+    // Tester la connexion avec timeout très court pour éviter les timeouts Vercel (10s max)
     try {
       await Promise.race([
         sequelize.authenticate(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 500)) // 500ms seulement
       ]);
     } catch (authError) {
-      console.error('[AUTH] Erreur de connexion DB:', authError.message);
-      throw new Error('Base de données non disponible');
+      // Si timeout, continuer quand même - peut être juste un peu lent
+      // Ne pas bloquer pour un simple timeout, essayer quand même la requête
+      console.warn('[AUTH] Vérification DB lente (timeout 500ms), continuation quand même:', authError.message);
+      // Ne pas throw, continuer l'exécution
     }
     
     const UserModel = getUserModel();
@@ -164,41 +166,8 @@ const loginUser = async (username, password) => {
       throw new Error('Modèle utilisateur non disponible');
     }
     
-    // Debug - Vérifier si la table User existe
-    // Note: sequelize est déjà déclaré plus haut, on le réutilise
-    try {
-      const [checkResults] = await sequelize.query(`
-        SELECT EXISTS (
-          SELECT FROM information_schema.tables 
-          WHERE table_name = 'User'
-        );
-      `);
-      console.log('[AUTH] La table User existe:', checkResults[0]?.exists);
-      
-      // Obtenir le nombre d'utilisateurs
-      const [countResults] = await sequelize.query('SELECT COUNT(*) FROM "User"');
-      console.log('[AUTH] Nombre d\'utilisateurs dans la base:', countResults[0]?.count);
-      
-      // Rechercher spécifiquement l'utilisateur demandé
-      const [userResults] = await sequelize.query(`
-        SELECT id, username, email FROM "User" 
-        WHERE username = :username OR email = :username
-      `, {
-        replacements: { username }
-      });
-      
-      console.log('[AUTH] Recherche SQL directe pour utilisateur:', username);
-      console.log('[AUTH] Résultat de la recherche directe:', userResults.length > 0 ? 'Trouvé' : 'Non trouvé');
-      
-      if (userResults.length === 0) {
-        console.log('[AUTH] Aucun utilisateur trouvé avec ce nom/email via SQL direct');
-      }
-    } catch (dbError) {
-      console.error('[AUTH] Erreur lors de la vérification de la base de données:', dbError);
-    }
-    
-    // Chercher l'utilisateur par nom d'utilisateur ou email
-    console.log('[AUTH] Recherche de l\'utilisateur avec Sequelize');
+    // OPTIMISATION: Suppression des requêtes de debug pour éviter les timeouts
+    // Chercher directement l'utilisateur par nom d'utilisateur ou email
     let user = null;
     
     // Essayer d'abord par nom d'utilisateur

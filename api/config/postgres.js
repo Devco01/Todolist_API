@@ -87,16 +87,16 @@ const connectPostgres = async (force = false) => {
         },
         // Options spécifiques pour NeonDB serverless
         application_name: 'todolist-api',
-        connect_timeout: 10, // Timeout de connexion de 10 secondes
+        connect_timeout: 3, // Timeout de connexion réduit à 3 secondes pour Vercel (limite 10s)
         keepAlive: true, // Maintenir la connexion active
         // Support pour les connexions serverless de NeonDB
-        statement_timeout: 30000 // Timeout de requête de 30 secondes
+        statement_timeout: 5000 // Timeout de requête réduit à 5 secondes pour éviter les timeouts Vercel
       },
       pool: {
         max: 1, // IMPORTANT: NeonDB serverless fonctionne mieux avec max: 1
         min: 0,
         idle: 10000, // 10 secondes avant de libérer une connexion inactive
-        acquire: 30000, // Délai d'attente max pour obtenir une connexion (30s)
+        acquire: 3000, // Délai d'attente max réduit à 3s pour éviter les timeouts Vercel
         evict: 60000, // Intervalle de vérification des connexions inactives
         // Gestion spéciale pour les connexions serverless
         handleDisconnects: true,
@@ -116,8 +116,8 @@ const connectPostgres = async (force = false) => {
       retry: {
         max: 0 // Pas de retry automatique - on gère manuellement
       },
-      // Timeout global pour toutes les opérations
-      timeout: 30000,
+      // Timeout global pour toutes les opérations - réduit pour Vercel (limite 10s)
+      timeout: 5000,
       // Options spécifiques NeonDB
       define: {
         freezeTableName: true,

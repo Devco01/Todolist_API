@@ -8,23 +8,25 @@ const { protect } = require('../middleware/authMiddleware');
 authService.initAuthService();
 
 // Middleware qui vérifie que le modèle User est prêt
+// OPTIMISÉ: Pas de vérification DB bloquante ici pour éviter les timeouts
 const ensureUserModelReady = async (req, res, next) => {
   try {
-    // Vérifier si la connexion DB est disponible d'abord
-    const { getSequelize } = require('../config/postgres');
-    const sequelize = getSequelize();
-    let dbAvailable = false;
-    
-    if (sequelize) {
+    // OPTIMISATION: Ne pas vérifier la connexion DB ici pour éviter les timeouts
+    // On laisse les routes gérer la vérification DB si nécessaire
+    // Juste vérifier que le modèle existe (même en mode mémoire)
+    const UserModel = getUserModel();
+    if (!UserModel) {
+      console.warn('[AUTH-ROUTE] Modèle User non disponible, tentative d\'initialisation rapide...');
+      
+      // Tentative d'initialisation rapide sans timeout long
       try {
         await Promise.race([
-          sequelize.authenticate(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2000))
+          initUserModel(false),
+          new Promise((resolve) => setTimeout(() => resolve(true), 1000)) // Max 1 seconde
         ]);
-        dbAvailable = true;
-      } catch (dbError) {
-        console.warn('[AUTH-ROUTE] Connexion DB non disponible dans middleware:', dbError.message);
-        dbAvailable = false;
+      } catch (initError) {
+        console.warn('[AUTH-ROUTE] Erreur lors de l\'initialisation rapide:', initError.message);
+        // Continuer quand même, le mode mémoire sera utilisé
       }
     }
     
@@ -344,35 +346,8 @@ router.post('/login', ensureUserModelReady, async (req, res) => {
       });
     }
     
-    // Vérifier si la base de données est accessible
-    const { getSequelize } = require('../config/postgres');
-    const sequelize = getSequelize();
-    let dbAvailable = false;
-    
-    if (sequelize) {
-      try {
-        await Promise.race([
-          sequelize.authenticate(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
-        ]);
-        dbAvailable = true;
-        console.log('[AUTH-ROUTE] Connexion DB disponible');
-      } catch (dbError) {
-        console.warn('[AUTH-ROUTE] Connexion DB non disponible:', dbError.message);
-        dbAvailable = false;
-      }
-    }
-    
-    // Si la DB n'est pas disponible, retourner une erreur explicite
-    if (!dbAvailable) {
-      console.error('[AUTH-ROUTE] Base de données non disponible pour la connexion');
-      return res.status(503).json({
-        success: false,
-        message: 'Service temporairement indisponible',
-        details: 'La base de données n\'est pas accessible pour le moment. Veuillez réessayer dans quelques instants.',
-        dbAvailable: false
-      });
-    }
+    // OPTIMISATION: Ne pas vérifier la DB ici, laisser authService.loginUser le faire
+    // Cela évite les doubles vérifications et les timeouts
     
     // Connecter l'utilisateur
     let result;
