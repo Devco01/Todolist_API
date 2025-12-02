@@ -58,13 +58,24 @@ const app = express();
       console.error('❌ Échec de connexion à PostgreSQL');
     }
     
-    // Force initialiser le modèle User (important: fait avant toute route)
-    console.log('\nInitialisation forcée du modèle User dans server.js...');
-    const forceSync = process.env.NODE_ENV === 'production' || process.env.FORCE_SYNC === 'true';
+    // CRITIQUE: Ne JAMAIS utiliser forceSync en production pour éviter la perte de données
+    // forceSync supprime toutes les données de la base de données !
+    console.log('\nInitialisation du modèle User dans server.js...');
+    
+    // IMPORTANT: Toujours utiliser false pour éviter la suppression des données en production
+    // Utiliser FORCE_SYNC=true uniquement en développement local si nécessaire
+    const forceSync = process.env.FORCE_SYNC === 'true' && process.env.NODE_ENV !== 'production';
+    
+    if (forceSync) {
+      console.warn('⚠️ ATTENTION: ForceSync activé - Cela supprimera toutes les données !');
+    } else {
+      console.log('✅ Mode sécurisé: ForceSync désactivé pour préserver les données');
+    }
+    
     const userInit = await initUserModel(forceSync);
     console.log(userInit ? '✅ Modèle User initialisé avec succès' : '❌ Échec d\'initialisation du modèle User');
     
-    // Synchroniser le modèle Todo après User
+    // Synchroniser le modèle Todo après User (sans forcer pour préserver les données)
     const todoInit = await syncTodoModel(forceSync);
     console.log(todoInit ? '✅ Modèle Todo synchronisé avec succès' : '❌ Échec de synchronisation du modèle Todo');
     
