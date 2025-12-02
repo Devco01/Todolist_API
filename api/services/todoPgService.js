@@ -13,7 +13,7 @@ const init = async () => {
   try {
     // CRITIQUE: Ne PAS appeler connectPostgres() ici si déjà appelé ailleurs
     // Utiliser getSequelize() qui retourne l'instance existante
-    const sequelize = getSequelize();
+    let sequelize = getSequelize();
     if (!sequelize) {
       // Seulement alors essayer de se connecter
       const connection = await connectPostgres();
@@ -21,13 +21,24 @@ const init = async () => {
         console.error('[TODOPG] Échec de connexion à PostgreSQL');
         return false;
       }
+      // Réessayer d'obtenir sequelize après connexion
+      sequelize = getSequelize();
     } else {
       console.log('[TODOPG] Réutilisation de la connexion PostgreSQL existante');
     }
     
     // Vérifier si la table Todo existe
     console.log('[TODOPG] Vérification de l\'existence de la table Todo');
-    const sequelize = getSequelize();
+    // Note: sequelize est déjà déclaré plus haut avec let, on peut le réutiliser
+    if (!sequelize) {
+      // Réessayer d'obtenir sequelize si pas disponible
+      sequelize = getSequelize();
+      if (!sequelize) {
+        console.error('[TODOPG] Impossible d\'obtenir une connexion Sequelize');
+        return false;
+      }
+    }
+    
     try {
       const [checkResults] = await sequelize.query(`
         SELECT EXISTS (
