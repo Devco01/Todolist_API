@@ -278,15 +278,10 @@ const syncTodoModel = async (force = false) => {
             console.error('[TODOPG] Erreur lors de la vérification des colonnes:', colError);
           }
           
-          // Synchroniser doucement le modèle
-          try {
-            await Todo.sync({ alter: true }); // Mise à jour douce (alter)
-            console.log('[TODOPG] Table Todo synchronisée en douceur');
-            return true;
-          } catch (syncError) {
-            console.error('[TODOPG] Erreur lors de la synchronisation douce:', syncError);
-            // Continuer malgré l'erreur
-          }
+          // CRITIQUE: En production, NE JAMAIS utiliser alter:true car ça recrée des contraintes
+          // La table existe déjà, pas besoin de sync
+          console.log('[TODOPG] Table Todo existe déjà, pas de synchronisation nécessaire en production (évite recréation de contraintes)');
+          return true;
           
           return true;
         }
@@ -369,10 +364,18 @@ const syncTodoModel = async (force = false) => {
       }
     }
     
-    // Synchroniser le modèle avec alter plutôt que force pour éviter de perdre les données
+    // CRITIQUE: En production, NE JAMAIS utiliser alter:true car ça recrée des contraintes
+    // Utiliser alter: false pour éviter de recréer des contraintes existantes
+    const isProduction = process.env.NODE_ENV === 'production';
     try {
-      await Todo.sync({ alter: true });
-      console.log('[TODOPG] Modèle Todo synchronisé avec la base de données (alter)');
+      if (isProduction) {
+        console.log('[TODOPG] Mode production: synchronisation avec alter=false pour éviter recréation de contraintes');
+        await Todo.sync({ alter: false });
+      } else {
+        console.log('[TODOPG] Mode développement: synchronisation avec alter=false');
+        await Todo.sync({ alter: false });
+      }
+      console.log('[TODOPG] Modèle Todo synchronisé avec la base de données');
       
       // Vérifier à nouveau que la table existe
       try {
@@ -482,7 +485,14 @@ const getTodoModel = () => {
   
   // Si le modèle n'a pas pu être défini, utiliser le mode mémoire
   if (!TodoModel) {
-    console.log('[TODOPG] Échec de définition du modèle, utilisation du mode mémoire');
+    // IMPORTANT: En production, ne JAMAIS basculer implicitement en mémoire.
+    // Sinon on "réussit" des écritures en RAM, et l'utilisateur perd ses données au redémarrage.
+    if (process.env.NODE_ENV === 'production') {
+      console.error('[TODOPG] Échec de définition du modèle en production: fallback mémoire REFUSÉ. La DB est probablement indisponible.');
+      return null;
+    }
+
+    console.log('[TODOPG] Échec de définition du modèle, utilisation du mode mémoire (dev)');
     isUsingMemoryMode = true;
     return getMemoryModel();
   }

@@ -157,6 +157,27 @@ const isModelAvailable = () => {
   return !!TodoModel;
 };
 
+// IMPORTANT: En production, on ne doit pas "fallback" silencieusement sur la mémoire
+// si la DB est indisponible, sinon on crée une illusion d'écriture/lecture et des pertes au redémarrage.
+const ensureDbAvailableOrThrow = async () => {
+  if (process.env.USE_MEMORY_MODE === 'true') return; // mode explicite (dev/tests)
+  if (process.env.NODE_ENV !== 'production') return; // en dev on accepte le fallback mémoire
+
+  const sequelize = getSequelize();
+  if (!sequelize) {
+    throw new Error('Base de données non disponible');
+  }
+
+  try {
+    await Promise.race([
+      sequelize.authenticate(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
+    ]);
+  } catch {
+    throw new Error('Base de données non disponible');
+  }
+};
+
 // Fonctions CRUD
 // --------------
 
@@ -226,6 +247,7 @@ const getAllTodosByUser = async (userId) => {
       console.log(`[TODOPG] Renvoi de ${userTodos.length} tâches à l'utilisateur ${userId}`);
       return userTodos;
     } else {
+      await ensureDbAvailableOrThrow();
       // Si la base de données n'est pas disponible, filtrer les todos en mémoire pour cet utilisateur
       console.log(`[TODOPG] Base de données non disponible, utilisation des ${inMemoryTodos.length} tâches en mémoire`);
       
@@ -283,6 +305,7 @@ const getAllTodos = async () => {
       
       return todos;
     } else {
+      await ensureDbAvailableOrThrow();
       // Si la base de données n'est pas disponible, retourner les todos en mémoire
       console.log(`[TODOPG] getAllTodos: Base de données non disponible, utilisation des ${inMemoryTodos.length} tâches en mémoire`);
       return inMemoryTodos;
@@ -315,6 +338,7 @@ const getTodoById = async (id, userId = null) => {
         return todo;
       }
     } else {
+      await ensureDbAvailableOrThrow();
       // MODIFICATION: Si userId est fourni, n'autoriser que l'accès aux tâches de cet utilisateur
       if (userId) {
         return inMemoryTodos.find(todo => todo.id === id && todo.userId === userId);
@@ -332,6 +356,9 @@ const getTodoById = async (id, userId = null) => {
 // Créer une nouvelle tâche
 const createTodo = async (todoData) => {
   try {
+    // En prod, refuser l'écriture si la DB n'est pas disponible
+    await ensureDbAvailableOrThrow();
+
     // Normaliser les données de la tâche pour éviter les erreurs de validation
     const normalizedData = { ...todoData };
 
@@ -424,6 +451,7 @@ const createTodo = async (todoData) => {
       
       return todoObject;
     } else {
+      await ensureDbAvailableOrThrow();
       // Mode mémoire de secours
       console.log('[TODOPG] Modèle non disponible, création directe en mémoire');
       
@@ -477,6 +505,7 @@ const updateTodo = async (id, updateData, userId = null) => {
     // Vérifier si la connexion DB est disponible avant d'essayer
     const sequelize = getSequelize();
     if (!sequelize) {
+      await ensureDbAvailableOrThrow();
       console.log(`[TODOPG] updateTodo - Pas de connexion DB, utilisation mémoire`);
       
       // Mettre à jour en mémoire
@@ -507,6 +536,7 @@ const updateTodo = async (id, updateData, userId = null) => {
       ]);
     } catch (authError) {
       console.warn(`[TODOPG] updateTodo - Connexion DB non disponible:`, authError.message);
+      await ensureDbAvailableOrThrow();
       
       // Fallback sur mémoire
       const index = inMemoryTodos.findIndex(t => {
@@ -574,6 +604,7 @@ const updateTodo = async (id, updateData, userId = null) => {
       console.log(`[TODOPG] updateTodo - Mise à jour réussie pour ${id}`);
       return todo;
     } else {
+      await ensureDbAvailableOrThrow();
       // Mettre à jour en mémoire - MODIFICATION: uniquement les tâches de l'utilisateur
       const index = inMemoryTodos.findIndex(t => {
         // Vérifier l'ID et que la tâche appartient à l'utilisateur
@@ -645,6 +676,7 @@ const deleteTodo = async (id, userId = null) => {
       
       return { success: true };
     } else {
+      await ensureDbAvailableOrThrow();
       // Vérifier si la tâche existe et appartient à l'utilisateur - MODIFICATION
       const todoToDelete = inMemoryTodos.find(t => {
         if (t.id !== id) return false;
@@ -673,6 +705,7 @@ const getTodosWithPendingNotifications = async () => {
     // Vérifier si la connexion DB est disponible avant d'essayer
     const sequelize = getSequelize();
     if (!sequelize) {
+      await ensureDbAvailableOrThrow();
       console.log('[TODOPG] getTodosWithPendingNotifications: Pas de connexion DB, utilisation mémoire');
       return inMemoryTodos.filter(todo => 
         todo.notificationsEnabled && 
@@ -685,6 +718,7 @@ const getTodosWithPendingNotifications = async () => {
       await sequelize.authenticate();
     } catch (authError) {
       console.warn('[TODOPG] getTodosWithPendingNotifications: Connexion DB non disponible:', authError.message);
+      await ensureDbAvailableOrThrow();
       return inMemoryTodos.filter(todo => 
         todo.notificationsEnabled && 
         !todo.completed && 
@@ -716,6 +750,7 @@ const getTodosWithPendingNotifications = async () => {
           todo.dueDate);
       }
     } else {
+      await ensureDbAvailableOrThrow();
       // Filtrer les todos en mémoire
       console.log('[TODOPG] getTodosWithPendingNotifications: Modèle non disponible, utilisation mémoire');
       return inMemoryTodos.filter(todo => 

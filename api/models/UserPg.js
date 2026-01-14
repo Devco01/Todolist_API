@@ -23,7 +23,12 @@ const initUserModel = async (force = true) => {
   // Obtenir l'instance Sequelize
   const sequelize = getSequelize();
   if (!sequelize) {
-    console.log('[USERPG] Base de données non disponible, activation du mode mémoire');
+    if (process.env.NODE_ENV === 'production') {
+      console.error('[USERPG] Base de données non disponible en production. Refus d\'activer le mode mémoire implicitement.');
+      return false;
+    }
+
+    console.log('[USERPG] Base de données non disponible, activation du mode mémoire (dev)');
     isUsingMemoryMode = true;
     return true;
   }
@@ -66,22 +71,10 @@ const initUserModel = async (force = true) => {
           // Ne pas bloquer si cette vérification échoue
         }
         
-        // Initialiser le modèle Sequelize sans forcer la synchronisation
-        const model = getUserModel();
-        if (model) {
-          try {
-            // Timeout pour sync aussi
-            await Promise.race([
-              model.sync({ alter: true }), // Mise à jour douce (alter)
-              new Promise((_, reject) => setTimeout(() => reject(new Error('Sync timeout')), 1000))
-            ]);
-            console.log('[USERPG] Table User synchronisée en douceur');
-            return true;
-          } catch (syncError) {
-            console.warn('[USERPG] Synchronisation ignorée (timeout ou erreur):', syncError.message);
-            // Continuer malgré l'erreur, la table existe déjà
-          }
-        }
+        // CRITIQUE: En production, NE JAMAIS utiliser alter:true car ça recrée des contraintes
+        // La table existe déjà, pas besoin de sync
+        console.log('[USERPG] Table User existe déjà, pas de synchronisation nécessaire en production');
+        return true;
         
         return true;
       }
@@ -89,7 +82,12 @@ const initUserModel = async (force = true) => {
       console.warn('[USERPG] Vérification de la table échouée (non bloquant):', checkError.message);
       // Continuer avec la création ou activer mode mémoire
       if (checkError.message?.includes('timeout') || checkError.message?.includes('Connection')) {
-        console.log('[USERPG] Connexion DB trop lente, activation du mode mémoire');
+        if (process.env.NODE_ENV === 'production') {
+          console.warn('[USERPG] Connexion DB trop lente en production. Mode mémoire REFUSÉ.');
+          return false;
+        }
+
+        console.log('[USERPG] Connexion DB trop lente, activation du mode mémoire (dev)');
         isUsingMemoryMode = true;
         return true; // Retourner true pour continuer
       }
@@ -120,26 +118,53 @@ const initUserModel = async (force = true) => {
         console.warn('[USERPG] Création de table timeout/échouée (non bloquant):', createError.message);
         // Ne pas bloquer - la table sera créée à la première utilisation
         console.log('[USERPG] Table sera créée automatiquement à la première utilisation');
-        // Activer le mode mémoire temporairement
+        // En production, ne pas basculer en mémoire implicitement
+        if (process.env.NODE_ENV === 'production') {
+          console.warn('[USERPG] En production: mode mémoire REFUSÉ malgré l\'échec de création/sync.');
+          return false;
+        }
+
+        // Activer le mode mémoire temporairement (dev)
         isUsingMemoryMode = true;
         return true; // Retourner true pour permettre la continuation
       }
     }
     
-    // OPTIMISATION: Synchronisation rapide avec timeout
+    // CRITIQUE: En production, NE JAMAIS utiliser alter:true car ça recrée des contraintes
+    // Si la table existe déjà, pas besoin de sync
     const model = getUserModel();
     if (model && !isUsingMemoryMode) {
+      // Vérifier si la table existe déjà
       try {
-        // Timeout très court pour la synchronisation
+        const sequelize = getSequelize();
+        if (sequelize) {
+          const [checkResults] = await sequelize.query(`
+            SELECT EXISTS (
+              SELECT FROM information_schema.tables 
+              WHERE table_name = 'User'
+            );
+          `);
+          const tableExists = checkResults[0]?.exists === true;
+          
+          if (tableExists) {
+            console.log('[USERPG] Table User existe déjà, pas de synchronisation nécessaire (évite recréation de contraintes)');
+            return true;
+          }
+        }
+      } catch (checkError) {
+        console.warn('[USERPG] Vérification de table ignorée:', checkError.message);
+      }
+      
+      // Seulement si la table n'existe pas, créer sans alter
+      try {
         await Promise.race([
-          model.sync({ force: false, alter: true }),
+          model.sync({ force: false, alter: false }), // alter: false pour éviter recréation de contraintes
           new Promise((_, reject) => setTimeout(() => reject(new Error('Sync timeout')), 1000))
         ]);
-        console.log('[USERPG] Table User synchronisée avec succès');
+        console.log('[USERPG] Table User créée avec succès');
         return true;
       } catch (syncError) {
         console.warn('[USERPG] Synchronisation ignorée (timeout ou erreur):', syncError.message);
-        // Continuer malgré l'erreur, la table existe peut-être déjà
         return true;
       }
     }
@@ -147,7 +172,12 @@ const initUserModel = async (force = true) => {
     return true;
   } catch (error) {
     console.error('[USERPG] Erreur globale lors de l\'initialisation du modèle User:', error);
-    console.log('[USERPG] Activation du mode mémoire suite à une erreur');
+    if (process.env.NODE_ENV === 'production') {
+      console.error('[USERPG] En production: mode mémoire REFUSÉ après erreur d\'initialisation.');
+      return false;
+    }
+
+    console.log('[USERPG] Activation du mode mémoire suite à une erreur (dev)');
     isUsingMemoryMode = true;
     return true;
   }
@@ -168,7 +198,12 @@ const getUserModel = () => {
   
   // Si Sequelize n'est pas disponible, activer le mode mémoire
   if (!sequelize) {
-    console.log('[USERPG] Base de données PostgreSQL non disponible, activation du mode mémoire');
+    if (process.env.NODE_ENV === 'production') {
+      console.error('[USERPG] Base de données PostgreSQL non disponible en production. Mode mémoire implicite REFUSÉ.');
+      return null;
+    }
+
+    console.log('[USERPG] Base de données PostgreSQL non disponible, activation du mode mémoire (dev)');
     isUsingMemoryMode = true;
     return getMemoryModel();
   }
@@ -281,6 +316,11 @@ const getUserModel = () => {
     return UserModel;
   } catch (error) {
     console.error('[USERPG] Erreur lors de la définition du modèle User:', error);
+    if (process.env.NODE_ENV === 'production') {
+      console.error('[USERPG] En production: mode mémoire REFUSÉ après erreur de définition du modèle.');
+      return null;
+    }
+
     isUsingMemoryMode = true;
     return getMemoryModel();
   }
@@ -388,17 +428,39 @@ const syncUserModel = async (force = false) => {
   }
   
   try {
-    // CRITIQUE: Ne JAMAIS utiliser forceSync en production - cela supprime toutes les données !
+    // CRITIQUE: Ne JAMAIS utiliser forceSync ou alter:true en production
+    // Cela recrée des contraintes et cause des index doublons
     const forceSync = (process.env.FORCE_SYNC === 'true' || force) && process.env.NODE_ENV !== 'production';
+    const isProduction = process.env.NODE_ENV === 'production';
     
     if (forceSync) {
       console.warn(`[USERPG] ⚠️ ATTENTION: ForceSync activé - Cela supprimera toutes les données !`);
+    } else if (isProduction) {
+      console.log(`[USERPG] Mode production: Pas de synchronisation (alter désactivé pour éviter recréation de contraintes)`);
+      // En production, on ne fait rien si la table existe déjà
+      const sequelize = getSequelize();
+      if (sequelize) {
+        try {
+          const [checkResults] = await sequelize.query(`
+            SELECT EXISTS (
+              SELECT FROM information_schema.tables 
+              WHERE table_name = 'User'
+            );
+          `);
+          if (checkResults[0]?.exists === true) {
+            console.log('[USERPG] Table User existe déjà, pas de synchronisation nécessaire');
+            return true;
+          }
+        } catch (checkError) {
+          // Continuer si la vérification échoue
+        }
+      }
     } else {
-      console.log(`[USERPG] Mode sécurisé: Synchronisation avec alter (force=${forceSync})`);
+      console.log(`[USERPG] Mode développement: Synchronisation avec alter=false (force=${forceSync})`);
     }
     
-    // Utiliser alter au lieu de force pour préserver les données
-    await model.sync({ force: false, alter: !forceSync });
+    // Utiliser alter: false pour éviter de recréer des contraintes
+    await model.sync({ force: false, alter: false });
     console.log('[USERPG] Modèle User synchronisé avec la base de données');
     return true;
   } catch (error) {

@@ -28,9 +28,16 @@ if (!process.env.ALLOW_ANONYMOUS_TODOS) {
 }
 
 // Activer automatiquement le mode mémoire si nécessaire
+// IMPORTANT: En production, ne JAMAIS basculer automatiquement en mode mémoire.
+// Le mode mémoire entraîne une perte de données au redémarrage (RAM/serverless).
+// Il ne doit être utilisé qu'en développement, ou explicitement activé.
 if (!process.env.POSTGRES_URL && !process.env.DATABASE_URL) {
-  console.log('Aucune URL PostgreSQL trouvée. Activation du mode mémoire.');
-  process.env.USE_MEMORY_MODE = 'true';
+  if (process.env.NODE_ENV === 'production') {
+    console.error('⚠️ Aucune URL PostgreSQL trouvée en production. Refus d\'activer le mode mémoire (risque de perte de données).');
+  } else {
+    console.log('Aucune URL PostgreSQL trouvée. Activation du mode mémoire (dev).');
+    process.env.USE_MEMORY_MODE = 'true';
+  }
 }
 
 // Initialiser l'application Express
@@ -59,8 +66,13 @@ const initDatabases = async () => {
       
       // Activer le mode mémoire si la connexion PostgreSQL a échoué
       if (!pgConnected) {
-        console.log('Activation du mode mémoire suite à l\'échec de connexion PostgreSQL');
-        process.env.USE_MEMORY_MODE = 'true';
+        if (process.env.NODE_ENV === 'production') {
+          console.error('❌ PostgreSQL indisponible en production. Refus d\'activer le mode mémoire (risque de perte de données).');
+          console.error('➡️ Le serveur restera en ligne mais renverra des 503 pour les opérations nécessitant la DB.');
+        } else {
+          console.log('Activation du mode mémoire suite à l\'échec de connexion PostgreSQL (dev).');
+          process.env.USE_MEMORY_MODE = 'true';
+        }
       }
     } else {
       console.log('Mode mémoire activé, connexion PostgreSQL ignorée');
@@ -68,6 +80,7 @@ const initDatabases = async () => {
     
     // Initialiser les modèles (avec ou sans mode mémoire)
     // CRITIQUE: Ne JAMAIS utiliser force=true en production pour éviter la perte de données !
+    // CRITIQUE: alter:true est désactivé en production pour éviter la recréation de contraintes/index doublons
     console.log('Initialisation du modèle User...');
     const forceUserSync = process.env.FORCE_SYNC === 'true' && process.env.NODE_ENV !== 'production';
     
@@ -89,6 +102,7 @@ const initDatabases = async () => {
     if (pgConnected) {
       console.log('Initialisation et synchronisation du modèle Todo...');
       // CRITIQUE: Ne JAMAIS utiliser force=true en production pour éviter la perte de données !
+      // CRITIQUE: alter:true est désactivé en production pour éviter la recréation de contraintes/index doublons
       const forceTodoSync = process.env.FORCE_SYNC === 'true' && process.env.NODE_ENV !== 'production';
       const todoSynced = await syncTodoModel(forceTodoSync);
       console.log('Synchronisation du modèle Todo:', todoSynced ? 'Réussie' : 'Échouée');
