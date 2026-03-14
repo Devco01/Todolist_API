@@ -131,6 +131,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api/notifications', notificationPgRoutes); // PostgreSQL
 app.use('/api/keep-alive', keepAliveRoutes);
 
+// Cron Vercel : rappels par email à 8h (7h UTC)
+app.get('/api/cron/check-notifications-pg', require('./cron/check-notifications-pg'));
+
 // Middleware de gestion d'erreur global - DOIT être après toutes les routes
 app.use((err, req, res, next) => {
   console.error('=== ERREUR GLOBALE ATTRAPÉE ===');
