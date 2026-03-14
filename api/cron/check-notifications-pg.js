@@ -166,22 +166,39 @@ const isToday = (dateStr) => {
  * Route cron pour vérifier les notifications et les envoyer
  * Cette route est appelée par Vercel Cron
  */
+/** Date du jour YYYY-MM-DD dans la timezone (ex: Europe/Paris) pour comparer avec dueDate */
+const getTodayInTZ = (timeZone = 'UTC') => {
+  return new Date().toLocaleDateString('en-CA', { timeZone });
+};
+
 module.exports = async (req, res) => {
   try {
     console.log('[CRON-PG] Vérification des notifications PostgreSQL déclenchée à', new Date().toISOString());
-    
-    // Vérifier l'heure courante - n'exécuter qu'à 8h
-    const currentHour = new Date().getUTCHours();
-    if (currentHour !== 8) {
-      console.log(`[CRON-PG] Cron exécuté à ${currentHour}h UTC, mais nous n'envoyons des notifications qu'à 8h UTC`);
-      return res.status(200).json({
-        success: true,
-        message: `Ignoré - heure actuelle (${currentHour}h UTC) différente de l'heure d'envoi (8h UTC)`,
+
+    // En production, refuser si SMTP non configuré (les mails ne partiraient pas)
+    const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1';
+    if (isProduction && (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS)) {
+      console.warn('[CRON-PG] SMTP non configuré en production - aucune notification envoyée');
+      return res.status(503).json({
+        success: false,
+        message: 'SMTP non configuré. Définir SMTP_HOST, SMTP_USER, SMTP_PASS (et optionnellement EMAIL_FROM) dans les variables d\'environnement Vercel.',
         timestamp: new Date().toISOString()
       });
     }
-    
-    console.log(`[CRON-PG] Cron exécuté à l'heure d'envoi (8h UTC), traitement des notifications...`);
+
+    // Ne traiter qu'à l'heure prévue (cron Vercel = 7h UTC = 8h Paris)
+    const hourUTC = new Date().getUTCHours();
+    const targetHourUTC = parseInt(process.env.NOTIFICATION_CRON_HOUR_UTC || '7', 10);
+    if (hourUTC !== targetHourUTC) {
+      console.log(`[CRON-PG] Heure actuelle ${hourUTC}h UTC, envoi prévu à ${targetHourUTC}h UTC (8h Paris), ignoré`);
+      return res.status(200).json({
+        success: true,
+        message: `Envoi des rappels à ${targetHourUTC}h UTC (ex: 8h Paris)`,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    console.log(`[CRON-PG] Heure d'envoi (${targetHourUTC}h UTC), traitement des notifications...`);
     
     // Vérification du token de sécurité (si configuré)
     const configToken = process.env.NOTIFICATION_CHECK_TOKEN;
@@ -248,32 +265,26 @@ module.exports = async (req, res) => {
       });
     }
     
-    // Récupérer les tâches avec notifications activées et non complétées
+    // Timezone pour "aujourd'hui" (ex: Europe/Paris)
+    const cronTz = process.env.CRON_TZ || 'Europe/Paris';
+    const todayStr = getTodayInTZ(cronTz);
+    console.log(`[CRON-PG] Date du jour (${cronTz}): ${todayStr}`);
+
+    // Récupérer les tâches : notifications activées, non complétées, pas encore notifiées, avec email, échéance aujourd'hui
     const todos = await TodoModel.findAll({
       where: {
         notificationsEnabled: true,
         completed: false,
-        dueDate: { [sequelize.Op.not]: null }
+        dueDate: todayStr,
+        notificationSent: { [sequelize.Op.or]: [false, null] },
+        notificationEmail: { [sequelize.Op.and]: [{ [sequelize.Op.ne]: null }, { [sequelize.Op.ne]: '' }] }
       }
     });
-    
-    console.log(`[CRON-PG] ${todos.length} tâches trouvées avec notifications activées`);
-    
-    // Obtenir la date d'aujourd'hui au format YYYY-MM-DD
-    const today = new Date();
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    console.log(`[CRON-PG] Date d'aujourd'hui: ${todayStr}`);
-    
-    // Filtrer les tâches pour ne garder que celles d'aujourd'hui
-    const todosForToday = todos.filter(todo => {
-      const isTodayTask = todo.dueDate === todayStr;
-      console.log(`[CRON-PG] Tâche "${todo.title}" (${todo.dueDate}) - Est pour aujourd'hui: ${isTodayTask ? 'Oui' : 'Non'}`);
-      return isTodayTask;
-    });
-    
-    console.log(`[CRON-PG] ${todosForToday.length} tâches pour aujourd'hui (${todayStr})`);
-    
-    // Si aucune tâche pour aujourd'hui
+
+    console.log(`[CRON-PG] ${todos.length} tâche(s) à notifier pour le ${todayStr}`);
+
+    const todosForToday = todos;
+
     if (todosForToday.length === 0) {
       return res.status(200).json({
         success: true,
@@ -345,21 +356,21 @@ module.exports = async (req, res) => {
         
         // Envoyer l'email
         const emailResult = await emailService.sendEmail(emailData);
-        
-        // Marquer la notification comme envoyée
-        await todo.update({ notificationSent: true });
-        
-        // Enregistrer l'envoi dans notre système de cooldown
-        recordNotificationSent(todoId);
-        
+        const sent = emailResult && emailResult.success;
+
+        if (sent) {
+          await todo.update({ notificationSent: true });
+          recordNotificationSent(todoId);
+          console.log(`[CRON-PG] Notification envoyée pour "${todo.title}" à ${todo.notificationEmail}`);
+        }
+
         results.push({
           todoId: todoId,
           title: todo.title,
-          success: true,
-          email: todo.notificationEmail
+          success: sent,
+          email: todo.notificationEmail,
+          ...(sent ? {} : { error: (emailResult && emailResult.message) || 'Envoi échoué' })
         });
-        
-        console.log(`[CRON-PG] Notification envoyée pour "${todo.title}" à ${todo.notificationEmail}`);
       } catch (error) {
         console.error(`[CRON-PG] Erreur lors de l'envoi de la notification pour la tâche ${todo.id}:`, error);
         
