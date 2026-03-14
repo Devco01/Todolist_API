@@ -39,7 +39,10 @@ router.get('/secure', protect, (req, res) => {
 
 // Endpoint pour le service de monitoring (comme UptimeRobot)
 // GET /api/keep-alive
+// Pour économiser le compute Neon : ne pas appeler la DB à chaque ping.
+// Ajouter ?check_db=1 pour inclure l'état DB (débogage).
 router.get('/', async (req, res) => {
+  const includeDbCheck = req.query.check_db === '1';
   // TOUJOURS retourner HTTP 200 pour UptimeRobot
   // Cette route doit être ultra-robuste et ne jamais retourner 500
   try {
@@ -106,45 +109,40 @@ router.get('/', async (req, res) => {
       };
     }
     
-    // Vérifier l'état de la connexion PostgreSQL (avec gestion d'erreur)
+    // Vérifier l'état de la connexion PostgreSQL uniquement si demandé (?check_db=1)
+    // Évite de consommer du compute Neon à chaque ping de monitoring (UptimeRobot, etc.)
     let dbStatus = {
-      isConnected: false,
-      state: 'unknown'
+      state: 'skipped',
+      message: 'Ajouter ?check_db=1 à l\'URL pour vérifier la base'
     };
-    
-    try {
-      const sequelize = getSequelize();
-      if (sequelize) {
-        try {
-          // Tester la connexion sans bloquer
-          await Promise.race([
-            sequelize.authenticate(),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2000))
-          ]);
-          dbStatus = {
-            isConnected: true,
-            state: 'connected'
-          };
-        } catch (authError) {
-          dbStatus = {
-            isConnected: false,
-            state: 'disconnected',
-            error: authError.message
-          };
+    if (includeDbCheck) {
+      try {
+        const sequelize = getSequelize();
+        if (sequelize) {
+          try {
+            await Promise.race([
+              sequelize.authenticate(),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2000))
+            ]);
+            dbStatus = { isConnected: true, state: 'connected' };
+          } catch (authError) {
+            dbStatus = {
+              isConnected: false,
+              state: 'disconnected',
+              error: authError.message
+            };
+          }
+        } else {
+          dbStatus = { isConnected: false, state: 'no_instance' };
         }
-      } else {
+      } catch (dbError) {
+        console.warn('[KEEP-ALIVE] Erreur lors de la vérification de la DB:', dbError.message);
         dbStatus = {
           isConnected: false,
-          state: 'no_instance'
+          state: 'error',
+          error: dbError.message
         };
       }
-    } catch (dbError) {
-      console.warn('[KEEP-ALIVE] Erreur lors de la vérification de la DB:', dbError.message);
-      dbStatus = {
-        isConnected: false,
-        state: 'error',
-        error: dbError.message
-      };
     }
     
     // Renvoyer les informations (TOUJOURS HTTP 200)

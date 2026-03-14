@@ -78,8 +78,34 @@ const saveNotificationHistory = (history = notificationSentHistory) => {
   }
 };
 
+/** Rétention en millisecondes (90 jours) pour limiter la croissance mémoire/stockage */
+const HISTORY_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+
+/**
+ * Purge les entrées de l'historique plus vieilles que HISTORY_RETENTION_MS.
+ * Évite que l'historique (fichier + mémoire) ne grossisse indéfiniment.
+ */
+const purgeOldNotificationHistory = () => {
+  const now = Date.now();
+  const before = Object.keys(notificationSentHistory).length;
+  const filtered = {};
+  for (const [todoId, timestamp] of Object.entries(notificationSentHistory)) {
+    if (now - timestamp < HISTORY_RETENTION_MS) {
+      filtered[todoId] = timestamp;
+    }
+  }
+  const removed = before - Object.keys(filtered).length;
+  if (removed > 0) {
+    notificationSentHistory = filtered;
+    saveNotificationHistory();
+    console.log('[CRON-PG] Purge de l\'historique:', removed, 'entrées supprimées (> 90 jours), reste', Object.keys(filtered).length);
+  }
+};
+
 // Charger l'historique des notifications au démarrage
 loadNotificationHistory();
+// Purger les entrées trop vieilles pour limiter l'utilisation mémoire/stockage
+purgeOldNotificationHistory();
 
 /**
  * Vérifie si une notification a déjà été envoyée récemment pour une tâche
