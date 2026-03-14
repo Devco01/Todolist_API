@@ -37,10 +37,10 @@ router.get('/secure', protect, (req, res) => {
   }
 });
 
-// Endpoint pour le service de monitoring (comme UptimeRobot)
+// Endpoint pour le service de monitoring (ex. UptimeRobot).
 // GET /api/keep-alive
-// Pour économiser le compute Neon : ne pas appeler la DB à chaque ping.
-// Ajouter ?check_db=1 pour inclure l'état DB (débogage).
+// Pour économiser le compute Neon : pas d'appel DB par défaut. ?check_db=1 pour inclure la DB.
+// Recommandation : configurer le monitoring à 15 min d'intervalle.
 router.get('/', async (req, res) => {
   const includeDbCheck = req.query.check_db === '1';
   // TOUJOURS retourner HTTP 200 pour UptimeRobot
