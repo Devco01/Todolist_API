@@ -82,7 +82,7 @@
   <!-- Modal de notification -->
   <div v-if="showNotificationModal" class="notification-modal-overlay" @click="closeNotificationModal">
     <div class="notification-modal" @click.stop>
-      <h3 class="modal-title">Notification par email</h3>
+      <h3 class="modal-title">Rappels le jour de la tâche</h3>
       
       <div class="notification-toggle">
         <label for="notification-toggle">Activer les notifications</label>
@@ -104,7 +104,7 @@
             id="notification-email-input"
             v-model="notificationSettings.email"
             type="email"
-            placeholder="Votre adresse email"
+            placeholder="vous@exemple.com"
             class="form-control"
             required
           >
@@ -112,12 +112,12 @@
         
         <p class="notification-info">
           <i class="notification-icon">ℹ️</i>
-          Vous recevrez une notification 1 heure avant l'échéance de cette tâche.
+          Un rappel par email est envoyé le jour de l’échéance (en général le matin, fuseau Europe/Paris sur le serveur).
         </p>
         
         <p class="notification-info">
           <i class="notification-icon">📧</i>
-          Les notifications sont envoyées automatiquement sans action requise de votre part.
+          Les envois sont automatiques ; pensez à configurer SMTP sur l’hébergement (ex. Vercel).
         </p>
       </div>
       
@@ -189,19 +189,17 @@ export default {
     };
     
     const saveNotificationSettings = async () => {
-      // Valider l'email si les notifications sont activées
       if (notificationSettings.value.enabled && !notificationSettings.value.email) {
         alert('Veuillez saisir une adresse email valide');
         return;
       }
-      
-      // Mettre à jour les paramètres de notification
+
       try {
         await store.dispatch('updateTodo', {
           ...props.todo,
           notificationsEnabled: notificationSettings.value.enabled,
           notificationEmail: notificationSettings.value.email,
-          notificationSent: false // Réinitialiser le statut d'envoi
+          notificationSent: false
         });
         
         // Configurer la notification de confirmation

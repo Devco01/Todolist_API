@@ -18,22 +18,20 @@ router.put('/:id', async (req, res) => {
       });
     }
     
-    // Valider l'email si les notifications sont activées
-    if (notificationsEnabled && (!notificationEmail || !notificationEmail.includes('@'))) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Un email valide est requis pour activer les notifications' 
+    if (notificationsEnabled && (!notificationEmail || !String(notificationEmail).includes('@'))) {
+      return res.status(400).json({
+        success: false,
+        error: 'Un email valide est requis pour activer les notifications'
       });
     }
-    
-    // Préparer les données à mettre à jour
+
     const updateData = {
       notificationsEnabled: notificationsEnabled
     };
-    
+
     if (notificationsEnabled) {
-      updateData.notificationEmail = notificationEmail;
-      updateData.notificationSent = false; // Réinitialiser le statut d'envoi
+      updateData.notificationEmail = String(notificationEmail).trim();
+      updateData.notificationSent = false;
     } else {
       updateData.notificationEmail = null;
       updateData.notificationSent = false;

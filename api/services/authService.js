@@ -6,7 +6,8 @@ const bcrypt = require('bcrypt');
 
 // Clé secrète pour les JWT - à remplacer par une variable d'environnement en production
 const JWT_SECRET = process.env.JWT_SECRET || 'votre_clé_secrète_jwt';
-const TOKEN_EXPIRATION = '7d'; // 7 jours
+// Durée du JWT : défaut généreux pour usage perso peu fréquent (override avec JWT_EXPIRES_IN, ex. "365d")
+const TOKEN_EXPIRATION = process.env.JWT_EXPIRES_IN || '180d';
 
 // Initialiser le service d'authentification
 const initAuthService = async () => {
@@ -382,6 +383,7 @@ module.exports = {
   registerUser,
   loginUser,
   verifyToken,
+  generateToken,
   userExists,
   getUserById
 }; 

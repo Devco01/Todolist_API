@@ -1,6 +1,11 @@
 const { DataTypes } = require('sequelize');
 const { getSequelize } = require('../config/postgres');
 const { getUserModel } = require('./UserPg');
+const {
+  getReminderTimeZone,
+  dueDateIsTodayInTz,
+  isPastReminderHourLocal
+} = require('../utils/reminderDay');
 
 // Définition du modèle Todo pour PostgreSQL avec Sequelize
 const defineTodoModel = () => {
@@ -62,13 +67,11 @@ const defineTodoModel = () => {
       allowNull: true,
       validate: {
         isEmailIfNotificationsEnabled(value) {
-          // Validation conditionnelle : vérifier l'email seulement si les notifications sont activées
           if (this.notificationsEnabled && value) {
             if (!/\S+@\S+\.\S+/.test(value)) {
               throw new Error('L\'adresse email n\'est pas valide');
             }
           }
-          // Si notifications désactivées, pas de validation d'email nécessaire
         }
       }
     },
@@ -115,103 +118,48 @@ const defineTodoModel = () => {
     quoteIdentifiers: true // IMPORTANT: Conserver les guillemets sur les identifiants
   });
   
-  // Méthodes additionnelles comme celle pour vérifier les notifications
   Todo.prototype.shouldNotify = function() {
     try {
       console.log(`[NOTIFICATION] Évaluation de la tâche "${this.title}" (ID: ${this.id})`);
-      
-      // Vérifications de base
+
       if (!this.notificationsEnabled) {
-        console.log(`[NOTIFICATION] Tâche "${this.title}": notifications désactivées`);
         return false;
       }
-      
       if (this.completed) {
-        console.log(`[NOTIFICATION] Tâche "${this.title}": déjà complétée`);
         return false;
       }
-      
-      if (!this.notificationEmail) {
-        console.log(`[NOTIFICATION] Tâche "${this.title}": pas d'email de notification`);
+
+      if (!this.notificationEmail || !/\S+@\S+\.\S+/.test(this.notificationEmail)) {
         return false;
       }
-      
+
       if (!this.dueDate) {
-        console.log(`[NOTIFICATION] Tâche "${this.title}": pas de date d'échéance`);
         return false;
       }
-      
-      // Créer une date d'échéance valide
-      let dueDateTime = null;
-      
-      try {
-        // Construire une date/heure d'échéance
-        const dueTime = this.dueTime || '08:00'; // Heure par défaut: 8h du matin
-        const dateStr = `${this.dueDate}T${dueTime}:00`;
-        dueDateTime = new Date(dateStr);
-        
-        // Vérifier si la date est valide
-        if (isNaN(dueDateTime.getTime())) {
-          console.error(`[NOTIFICATION] Date d'échéance invalide pour la tâche "${this.title}": ${dateStr}`);
-          return false;
-        }
-        
-        console.log(`[NOTIFICATION] Date d'échéance pour "${this.title}": ${dueDateTime.toISOString()}`);
-      } catch (e) {
-        console.error(`[NOTIFICATION] Erreur lors de la création de la date d'échéance pour "${this.title}":`, e);
-        return false;
-      }
-      
+
+      const tz = getReminderTimeZone();
       const now = new Date();
-      
-      // Déterminer si la tâche est prévue pour aujourd'hui
-      const isToday = this.isDateToday(dueDateTime);
-      
-      // Journaliser les décisions de notification pour le débogage
-      console.log(`[NOTIFICATION] Évaluation de "${this.title}": 
-        - Date d'échéance: ${dueDateTime.toISOString()}
-        - Heure actuelle: ${now.toISOString()}
-        - Est aujourd'hui: ${isToday ? 'OUI' : 'NON'}
-        - Notification déjà envoyée: ${this.notificationSent ? 'OUI' : 'NON'}
-        - Heure locale: ${now.getHours()}:${now.getMinutes()}
-      `);
-      
-      // Ne pas notifier les tâches passées
-      if (dueDateTime < now) {
-        console.log(`[NOTIFICATION] Tâche "${this.title}": la date d'échéance est déjà passée`);
-        return false;
-      }
-      
-      // Si la notification a déjà été envoyée
+      const isToday = dueDateIsTodayInTz(this.dueDate, tz);
+
+      console.log(`[NOTIFICATION] "${this.title}" due=${this.dueDate} tz=${tz} isToday=${isToday} sent=${this.notificationSent}`);
+
       if (this.notificationSent) {
-        console.log(`[NOTIFICATION] Tâche "${this.title}": notification déjà envoyée`);
         return false;
       }
-      
-      // Notification uniquement pour les tâches d'aujourd'hui
+
       if (!isToday) {
-        console.log(`[NOTIFICATION] Tâche "${this.title}": pas prévue pour aujourd'hui`);
         return false;
       }
-      
-      // NOUVELLE LOGIQUE: Vérifier l'heure pour décider si on envoie maintenant
-      // Par défaut, envoyer les notifications à 8h00 du matin
-      const targetHour = 8; // 8h du matin
-      const currentHour = now.getHours();
-      
-      console.log(`[NOTIFICATION] Heure actuelle pour "${this.title}": ${currentHour}h vs heure cible: ${targetHour}h`);
-      
-      // Vérifiez également si nous avons dépassé minuit mais pas encore atteint 8h
-      if (currentHour >= 0 && currentHour < targetHour) {
-        console.log(`[NOTIFICATION] Trop tôt pour envoyer la notification pour "${this.title}" (${currentHour}h vs ${targetHour}h), attente...`);
+
+      // Rappel « jour J » : même si l'heure de la tâche est déjà passée ce jour-là
+      if (!isPastReminderHourLocal(now, tz)) {
+        console.log(`[NOTIFICATION] Trop tôt dans ${tz} pour "${this.title}" (avant REMINDER_LOCAL_HOUR)`);
         return false;
       }
-      
-      // Si c'est après 8h et que la notification n'a pas été envoyée, l'envoyer
-      console.log(`[NOTIFICATION] ENVOI de notification pour "${this.title}"`);
+
       return true;
     } catch (error) {
-      console.error(`[NOTIFICATION] Erreur lors de la vérification de notification pour la tâche "${this.title}":`, error);
+      console.error(`[NOTIFICATION] Erreur shouldNotify "${this.title}":`, error);
       return false;
     }
   };
@@ -577,35 +525,24 @@ const getMemoryModel = () => {
         createdAt: new Date(),
         updatedAt: new Date(),
         
-        // Méthodes du prototype
         shouldNotify: function() {
           if (!this.notificationsEnabled || this.completed) {
             return false;
           }
-          
-          if (!this.notificationEmail) {
+          if (!this.notificationEmail || !/\S+@\S+\.\S+/.test(this.notificationEmail)) {
             return false;
           }
-          
           if (!this.dueDate) {
             return false;
           }
-          
-          const now = new Date();
-          const dueDateTime = new Date(`${this.dueDate}T${this.dueTime || '00:00'}:00`);
-          
-          // Ne pas notifier les tâches passées
-          if (dueDateTime < now) {
-            return false;
-          }
-          
-          // Si la notification a déjà été envoyée
           if (this.notificationSent) {
             return false;
           }
-          
-          // Vérifier si la date est aujourd'hui
-          return this.isDateToday(dueDateTime);
+          const tz = getReminderTimeZone();
+          if (!dueDateIsTodayInTz(this.dueDate, tz)) {
+            return false;
+          }
+          return isPastReminderHourLocal(new Date(), tz);
         },
         isDateToday: function(date) {
           const today = new Date();

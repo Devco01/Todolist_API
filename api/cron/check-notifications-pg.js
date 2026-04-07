@@ -2,6 +2,7 @@
 const { connectPostgres, getSequelize } = require('../config/postgres');
 const { getTodoModel } = require('../models/TodoPg');
 const emailService = require('../services/emailService');
+const { Op } = require('sequelize');
 const fs = require('fs');
 const path = require('path');
 
@@ -175,16 +176,20 @@ module.exports = async (req, res) => {
   try {
     console.log('[CRON-PG] Vérification des notifications PostgreSQL déclenchée à', new Date().toISOString());
 
-    // En production, refuser si SMTP non configuré (les mails ne partiraient pas)
     const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1';
     if (isProduction && (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS)) {
       console.warn('[CRON-PG] SMTP non configuré en production - aucune notification envoyée');
       return res.status(503).json({
         success: false,
-        message: 'SMTP non configuré. Définir SMTP_HOST, SMTP_USER, SMTP_PASS (et optionnellement EMAIL_FROM) dans les variables d\'environnement Vercel.',
+        message:
+          'SMTP non configuré. Définir SMTP_HOST, SMTP_USER, SMTP_PASS (et optionnellement EMAIL_FROM) dans les variables d\'environnement Vercel.',
         timestamp: new Date().toISOString()
       });
     }
+
+    const smtpOk = Boolean(
+      process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS
+    );
 
     // Ne traiter qu'à l'heure prévue (cron Vercel = 7h UTC = 8h Paris)
     const hourUTC = new Date().getUTCHours();
@@ -270,14 +275,13 @@ module.exports = async (req, res) => {
     const todayStr = getTodayInTZ(cronTz);
     console.log(`[CRON-PG] Date du jour (${cronTz}): ${todayStr}`);
 
-    // Récupérer les tâches : notifications activées, non complétées, pas encore notifiées, avec email, échéance aujourd'hui
     const todos = await TodoModel.findAll({
       where: {
         notificationsEnabled: true,
         completed: false,
         dueDate: todayStr,
-        notificationSent: { [sequelize.Op.or]: [false, null] },
-        notificationEmail: { [sequelize.Op.and]: [{ [sequelize.Op.ne]: null }, { [sequelize.Op.ne]: '' }] }
+        notificationSent: { [Op.or]: [false, null] },
+        notificationEmail: { [Op.and]: [{ [Op.ne]: null }, { [Op.ne]: '' }] }
       }
     });
 
@@ -316,13 +320,11 @@ module.exports = async (req, res) => {
       });
     }
     
-    // Envoyer les notifications
     const results = [];
     for (const todo of todosToNotify) {
       try {
         const todoId = todo.id || todo._id;
-        
-        // Construire le contenu de l'email
+
         const emailData = {
           to: todo.notificationEmail,
           subject: `Rappel: "${todo.title}" - Tâche à effectuer AUJOURD'HUI`,
@@ -353,9 +355,8 @@ module.exports = async (req, res) => {
             <p style="color: #666; font-size: 0.8em;">Cet email a été envoyé automatiquement par votre application TodoList</p>
           `.replace(/            /g, '').trim()
         };
-        
-        // Envoyer l'email
-        const emailResult = await emailService.sendEmail(emailData);
+
+        const emailResult = smtpOk ? await emailService.sendEmail(emailData) : { success: false, message: 'SMTP non configuré' };
         const sent = emailResult && emailResult.success;
 
         if (sent) {
@@ -365,7 +366,7 @@ module.exports = async (req, res) => {
         }
 
         results.push({
-          todoId: todoId,
+          todoId,
           title: todo.title,
           success: sent,
           email: todo.notificationEmail,
@@ -373,7 +374,6 @@ module.exports = async (req, res) => {
         });
       } catch (error) {
         console.error(`[CRON-PG] Erreur lors de l'envoi de la notification pour la tâche ${todo.id}:`, error);
-        
         results.push({
           todoId: todo.id,
           title: todo.title,

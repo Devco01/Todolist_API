@@ -1051,13 +1051,10 @@ export default createStore({
           return { success: false, error: errorMessage };
         }
 
-        // CORRECTIF: S'assurer que notificationEmail est vide si notifications désactivées
         if (!todo.notificationsEnabled) {
-          console.log('[DEBUG] Notifications désactivées, suppression de l\'email pour éviter la validation');
           todo.notificationEmail = null;
         } else if (todo.notificationsEnabled && (!todo.notificationEmail || !todo.notificationEmail.trim())) {
           const errorMessage = 'Une adresse email valide est requise pour les notifications';
-          console.error(errorMessage);
           commit('SET_ERROR', errorMessage);
           commit('SET_LOADING', false);
           return { success: false, error: errorMessage };
@@ -1159,14 +1156,10 @@ export default createStore({
         return { success: false, error: 'Tâche non valide' };
       }
       
-      // CORRECTIF: S'assurer que notificationEmail est vide si notifications désactivées
       if (todo.hasOwnProperty('notificationsEnabled') && !todo.notificationsEnabled) {
-        console.log('[DEBUG] Notifications désactivées, suppression de l\'email pour éviter la validation');
-        todo.notificationEmail = null; // Utiliser null au lieu de chaîne vide pour éviter les problèmes de validation
+        todo.notificationEmail = null;
       } else if (todo.notificationsEnabled && (!todo.notificationEmail || !todo.notificationEmail.trim())) {
-        // Si notifications activées mais email vide, afficher erreur
         const errorMessage = 'Une adresse email valide est requise pour les notifications';
-        console.error(errorMessage);
         commit('SET_ERROR', errorMessage);
         return { success: false, error: errorMessage };
       }

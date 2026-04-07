@@ -480,6 +480,10 @@ router.get('/logout', protect, (req, res) => {
  */
 router.get('/me', protect, async (req, res) => {
   try {
+    // Renouvellement glissant : le client met à jour le token via l’intercepteur axios (x-auth-token)
+    const newToken = authService.generateToken(req.user);
+    res.setHeader('x-auth-token', newToken);
+
     res.status(200).json({
       success: true,
       user: req.user
