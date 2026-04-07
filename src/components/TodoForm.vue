@@ -127,10 +127,10 @@
         </div>
       </div>
       
-      <!-- Section de notification par email -->
+      <!-- Rappel par email le jour J -->
       <div class="form-group notification-section">
         <div class="notification-header">
-          <label class="form-label">Notification par email</label>
+          <label class="form-label">Rappel par email</label>
           <div class="toggle-container">
             <input 
               type="checkbox" 
@@ -150,14 +150,14 @@
               id="notification-email"
               v-model="todo.notificationEmail"
               type="email"
-              placeholder="Votre adresse email"
+              placeholder="vous@exemple.com"
               class="form-control"
               required
             >
           </div>
           <p class="notification-info">
             <i class="notification-icon">ℹ️</i>
-            Vous recevrez un email 1 heure avant l'échéance de cette tâche.
+            Rappel envoyé le jour de l’échéance (en général le matin, fuseau Europe/Paris côté serveur).
           </p>
         </div>
       </div>
@@ -341,9 +341,7 @@ export default {
     }
 
     const handleNotificationToggle = () => {
-      // Si les notifications sont désactivées, effacer l'email
       if (!todo.value.notificationsEnabled) {
-        console.log('[DEBUG] Notifications désactivées, effacement du champ email');
         todo.value.notificationEmail = '';
       }
     }

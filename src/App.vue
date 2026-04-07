@@ -477,15 +477,19 @@ export default {
         console.error('[DEBUG] Erreur lors de la synchronisation automatique:', error);
       }
       
-      // Configurer la synchronisation périodique (toutes les 2 minutes)
+      // Sync périodique (15 min uniquement si l'onglet est visible — limite le compute Neon)
+      const SYNC_MS = 15 * 60 * 1000;
       syncInterval = setInterval(async () => {
+        if (document.visibilityState !== 'visible') {
+          return;
+        }
         console.log('[DEBUG] Synchronisation périodique...');
         try {
           await store.dispatch('fetchTodos');
         } catch (error) {
           console.error('[DEBUG] Erreur lors de la synchronisation périodique:', error);
         }
-      }, 2 * 60 * 1000);
+      }, SYNC_MS);
       
       // Ajouter un écouteur d'événements pour détecter la reprise après veille
       document.addEventListener('visibilitychange', handleVisibilityChange);

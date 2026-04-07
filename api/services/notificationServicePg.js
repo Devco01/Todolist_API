@@ -193,17 +193,16 @@ const sendPendingNotifications = async () => {
     }
     
     console.log(`${todosToNotify.length} tâches à notifier aujourd'hui`);
-    
-    // Regrouper les tâches par adresse email
+
     const todosByEmail = {};
-    
-    todosToNotify.forEach(todo => {
+
+    todosToNotify.forEach((todo) => {
       if (!todo.notificationEmail) return;
-      
+
       if (!todosByEmail[todo.notificationEmail]) {
         todosByEmail[todo.notificationEmail] = [];
       }
-      
+
       todosByEmail[todo.notificationEmail].push(todo);
     });
     
@@ -325,29 +324,26 @@ Votre application TodoList
           `.trim()
         };
 
-        // Envoyer l'email
-        const emailService = require('./emailService');
         const emailResult = await emailService.sendEmail(emailData);
-        
+
         if (emailResult.success) {
-          // Marquer toutes les tâches comme notifiées
           for (const todo of emailTodos) {
             await todoPgService.markNotificationSent(todo.id);
           }
-          
+
           console.log(`Notification groupée envoyée pour ${todoCount} tâches à ${email}`);
-          
+
           results.sent++;
           results.details.push({
-            email: email,
-            todoCount: todoCount,
-            todos: emailTodos.map(t => ({ id: t.id, title: t.title })),
+            email,
+            todoCount,
+            todos: emailTodos.map((t) => ({ id: t.id, title: t.title })),
             status: 'success',
             messageId: emailResult.messageId || '',
             previewUrl: emailResult.previewUrl || ''
           });
         } else {
-          throw new Error(emailResult.message || 'Échec de l\'envoi de l\'email');
+          throw new Error(emailResult.message || "Échec de l'envoi de l'email");
         }
       } catch (err) {
         console.error(`Erreur lors de l'envoi de la notification groupée à ${email}:`, err);

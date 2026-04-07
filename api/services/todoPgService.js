@@ -142,7 +142,7 @@ const init = async () => {
     
     // Synchroniser le modèle (en mode non destructif)
     await syncTodoModel(false);
-    
+
     console.log('[TODOPG] Service todoPg initialisé avec succès');
     return true;
   } catch (error) {
@@ -398,9 +398,8 @@ const createTodo = async (todoData) => {
       normalizedData.priority = 'medium';
     }
     
-    // Vérifier la notification email
     if (normalizedData.notificationsEnabled && (!normalizedData.notificationEmail || !normalizedData.notificationEmail.trim())) {
-      console.log(`[TODOPG] Notifications activées mais email manquant -> notifications désactivées`);
+      console.log('[TODOPG] Notifications activées mais email manquant -> notifications désactivées');
       normalizedData.notificationsEnabled = false;
       normalizedData.notificationEmail = null;
     }
@@ -501,7 +500,20 @@ const createTodo = async (todoData) => {
 const updateTodo = async (id, updateData, userId = null) => {
   try {
     console.log(`[TODOPG] updateTodo - ID: ${id}, userId: ${userId}`);
-    
+
+    if (Object.prototype.hasOwnProperty.call(updateData, 'notificationsEnabled')) {
+      if (!updateData.notificationsEnabled) {
+        updateData.notificationEmail = null;
+      } else {
+        const emailTrim =
+          updateData.notificationEmail && String(updateData.notificationEmail).trim();
+        if (!emailTrim) {
+          throw new Error('Un email valide est requis pour les notifications');
+        }
+        updateData.notificationEmail = emailTrim;
+      }
+    }
+
     // Vérifier si la connexion DB est disponible avant d'essayer
     const sequelize = getSequelize();
     if (!sequelize) {
